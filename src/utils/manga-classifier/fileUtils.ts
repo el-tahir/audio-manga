@@ -33,20 +33,39 @@ export function cleanupTempFiles(dirPath: string) {
         if (fs.existsSync(dir)) {
           fs.readdirSync(dir).forEach((file) => {
             const curPath = path.join(dir, file);
-            if (fs.lstatSync(curPath).isDirectory()) {
-              deleteRecursive(curPath);
-            } else {
-              fs.unlinkSync(curPath);
+            try {
+              if (fs.lstatSync(curPath).isDirectory()) {
+                deleteRecursive(curPath);
+              } else {
+                try {
+                  fs.unlinkSync(curPath);
+                } catch (err) {
+                  // If we can't delete the file, just log it rather than crashing
+                  const fileError = err as Error;
+                  console.warn(`[MANGA-CLASSIFIER] Could not delete temporary file ${curPath}: ${fileError.message}`);
+                }
+              }
+            } catch (err) {
+              const statError = err as Error;
+              console.warn(`[MANGA-CLASSIFIER] Error accessing ${curPath}: ${statError.message}`);
             }
           });
-          fs.rmdirSync(dir);
+          
+          // Try to remove the directory but don't crash if it fails
+          try {
+            fs.rmdirSync(dir);
+          } catch (err) {
+            const dirError = err as Error;
+            console.warn(`[MANGA-CLASSIFIER] Could not remove directory ${dir}: ${dirError.message}`);
+          }
         }
       };
       
       deleteRecursive(dirPath);
+      console.log(`[MANGA-CLASSIFIER] Temp directory cleanup attempted for ${dirPath}`);
     }
   } catch (error) {
-    console.error('Error cleaning up temp files:', error);
+    console.error('[MANGA-CLASSIFIER] Error during temp files cleanup:', error);
   }
 }
 

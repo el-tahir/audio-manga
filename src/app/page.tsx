@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
-import { supabase } from '@/lib/supabase';
 import ChapterCard from '@/components/ChapterCard';
 
 interface Chapter {
@@ -10,6 +9,7 @@ interface Chapter {
   chapter_number: number;
   total_pages: number;
   processed_at: string;
+  status: string;
 }
 
 export default function ReaderPage() {
@@ -20,15 +20,9 @@ export default function ReaderPage() {
   useEffect(() => {
     async function fetchChapters() {
       try {
-        const { data, error } = await supabase
-          .from('manga_chapters')
-          .select('*')
-          .order('chapter_number', { ascending: true });
-
-        if (error) {
-          throw error;
-        }
-
+        const res = await fetch('/api/chapters');
+        if (!res.ok) throw new Error('Failed to fetch chapters');
+        const data: Chapter[] = await res.json();
         setChapters(data);
       } catch (err) {
         setError(err as Error);
@@ -68,11 +62,11 @@ export default function ReaderPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {chapters?.map((chapter: Chapter) => (
             <ChapterCard 
-              key={chapter.id}
-              id={chapter.id}
+              key={chapter.chapter_number}
               chapterNumber={chapter.chapter_number}
               totalPages={chapter.total_pages}
               processedAt={chapter.processed_at}
+              status={chapter.status}
             />
           ))}
         </div>

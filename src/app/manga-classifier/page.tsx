@@ -4,15 +4,9 @@ import { useState, useRef, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import { 
   chapterExistsInDatabase, 
-  getStoredChapterNumbers,
   getChapterClassifications 
 } from '@/services/mangaService';
-
-type ClassificationResult = {
-  filename: string;
-  category: 'investigation' | 'suspense' | 'action' | 'revelation' | 'conclusion' | 'casual' | 'tragic';
-  confidence?: number;
-};
+import { ClassificationResult } from '@/types';
 
 export default function MangaClassifier() {
   const [file, setFile] = useState<File | null>(null);
@@ -23,23 +17,28 @@ export default function MangaClassifier() {
     number: number | null;
     exists: boolean;
   }>({ number: null, exists: false });
-  const [storedChapters, setStoredChapters] = useState<number[]>([]);
+  const [storedChapters, setStoredChapters] = useState<any[]>([]);
   const [loadingStoredChapters, setLoadingStoredChapters] = useState(true);
+  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const fetchChapters = async () => {
+    setLoadingStoredChapters(true);
+    try {
+      const res = await fetch('/api/chapters');
+      if (!res.ok) throw new Error('Failed to fetch chapters');
+      const data = await res.json();
+      setStoredChapters(data);
+    } catch (err) {
+      console.error('Error fetching chapters:', err);
+      setStoredChapters([]);
+    } finally {
+      setLoadingStoredChapters(false);
+    }
+  };
+
   useEffect(() => {
-    const loadStoredChapters = async () => {
-      try {
-        const chapters = await getStoredChapterNumbers();
-        setStoredChapters(chapters);
-      } catch (err) {
-        console.error("Error fetching stored chapters:", err);
-      } finally {
-        setLoadingStoredChapters(false);
-      }
-    };
-    
-    loadStoredChapters();
+    fetchChapters();
   }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,39 +79,18 @@ export default function MangaClassifier() {
       const formData = new FormData();
       formData.append('archive', file);
 
-      const res = await fetch('/api/manga-classifier', {
+      const res = await fetch('/api/chapters', {
         method: 'POST',
         body: formData,
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to process archive');
-      }
-
       const data = await res.json();
-      
-      // Set chapter info
-      if (data.chapterNumber) {
-        setChapterInfo({
-          number: data.chapterNumber,
-          exists: data.exists || false
-        });
-        
-        // Refresh stored chapters list after processing
-        const chapters = await getStoredChapterNumbers();
-        setStoredChapters(chapters);
-      }
-      
-      // Set results if not already in database
-      if (!data.exists) {
-        setResults(data.classifications);
-      } else if (data.chapterNumber) {
-        // If the chapter exists, fetch its classifications from the database
-        const classifications = await getChapterClassifications(data.chapterNumber);
-        setResults(classifications);
+      if (res.status === 202) {
+        setProcessingMessage(`Processing started for chapter ${data.chapterNumber}`);
+        await fetchChapters();
+        clearFile();
       } else {
-        setResults([]);
+        throw new Error(data.error || 'Failed to start processing');
       }
     } catch (err) {
       console.error('Error:', err);
@@ -131,14 +109,21 @@ export default function MangaClassifier() {
     }
   };
 
-  const categoryColors = {
-    investigation: '#3498db', // blue
-    suspense: '#9b59b6',     // purple
-    action: '#e74c3c',       // red
-    revelation: '#2ecc71',   // green
-    conclusion: '#f39c12',   // orange
-    casual: '#1abc9c',       // turquoise
-    tragic: '#34495e',       // dark gray
+  const categoryColors: { [key: string]: string } = {
+    'intro': '#3498db',           // Blue
+    'love': '#e84393',           // Pink
+    'love_ran': '#ff69b4',       // Hot Pink
+    'casual': '#00b894',         // Mint
+    'adventure': '#1abc9c',      // Turquoise
+    'comedy': '#f1c40f',         // Yellow
+    'action_casual': '#e74c3c',  // Red
+    'action_serious': '#c0392b', // Dark Red
+    'tragic': '#34495e',         // Dark Gray-Blue
+    'tension': '#8e44ad',        // Dark Purple
+    'confrontation': '#d35400',  // Pumpkin Orange
+    'investigation': '#2980b9',  // Darker Blue
+    'revelation': '#16a085',     // Teal
+    'conclusion': '#27ae60',     // Dark Green
   };
 
   return (
@@ -157,18 +142,22 @@ export default function MangaClassifier() {
           ) : (
             <>
               <p>Chapters in database: {storedChapters.length}</p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '10px' }}>
-                {storedChapters.map((chapter) => (
-                  <span key={chapter} style={{
-                    padding: '3px 8px',
-                    backgroundColor: '#2D3748',
-                    borderRadius: '4px',
-                    fontSize: '0.8rem'
-                  }}>
-                    #{chapter}
-                  </span>
-                ))}
-              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Chapter</th>
+                    <th style={{ textAlign: 'left', padding: '8px' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {storedChapters.map((chap) => (
+                    <tr key={chap.chapter_number}>
+                      <td style={{ padding: '8px' }}>#{chap.chapter_number}</td>
+                      <td style={{ padding: '8px' }}>{chap.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </>
           )}
         </div>
@@ -270,65 +259,8 @@ export default function MangaClassifier() {
           </div>
         )}
 
-        {results.length > 0 && (
-          <div>
-            <h2 style={{ marginBottom: '15px' }}>Classification Results</h2>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-              gap: '15px'
-            }}>
-              {results.map((result, index) => (
-                <div key={index} style={{
-                  backgroundColor: '#1a1a1a',
-                  border: `2px solid ${categoryColors[result.category] || '#333'}`,
-                  borderRadius: '4px',
-                  padding: '10px',
-                  textAlign: 'center'
-                }}>
-                  <div style={{ 
-                    fontWeight: 'bold', 
-                    marginBottom: '5px',
-                    backgroundColor: categoryColors[result.category] || '#333',
-                    padding: '4px',
-                    borderRadius: '2px',
-                    color: 'white'
-                  }}>
-                    {result.category.toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {result.filename}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <button 
-              onClick={() => {
-                const json = JSON.stringify(results, null, 2);
-                const blob = new Blob([json], { type: 'application/json' });
-                const href = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = href;
-                link.download = `${chapterInfo.number}-classifications.json`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(href);
-              }}
-              style={{
-                marginTop: '20px',
-                backgroundColor: '#2ecc71',
-                color: 'white',
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              Download JSON
-            </button>
-          </div>
+        {processingMessage && (
+          <p style={{ marginBottom: '20px' }}>{processingMessage}</p>
         )}
       </div>
     </>

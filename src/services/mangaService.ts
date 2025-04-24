@@ -36,22 +36,11 @@ export async function getStoredChapterNumbers(): Promise<number[]> {
 export async function getChapterClassifications(
   chapterNumber: number
 ): Promise<ClassificationResult[]> {
-  // First get the chapter ID
-  const { data: chapterData, error: chapterError } = await supabase
-    .from('manga_chapters')
-    .select('id')
-    .eq('chapter_number', chapterNumber)
-    .single();
-  
-  if (chapterError || !chapterData) {
-    return [];
-  }
-  
-  // Now get the page classifications
+  // Query page classifications by chapter_number
   const { data, error } = await supabase
     .from('manga_page_classifications')
     .select('*')
-    .eq('chapter_id', chapterData.id)
+    .eq('chapter_number', chapterNumber)
     .order('page_number', { ascending: true });
   
   if (error || !data) {
@@ -61,7 +50,7 @@ export async function getChapterClassifications(
   return data.map(item => ({
     filename: item.filename,
     category: item.category,
-    confidence: item.confidence
+    explanation: item.explanation
   }));
 }
 

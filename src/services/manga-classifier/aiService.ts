@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ClassificationResult } from '@/utils/manga-classifier/types';
+import { ClassificationResult } from '@/types';
+
+// Constants for API handling
+const MAX_RETRIES = 3; // Maximum retry attempts
+const REQUEST_TIMEOUT = 60000; // 60 second timeout for API calls
 
 // Function to get an API instance with rotating keys
 function getAIInstance(keyIndex?: number): GoogleGenerativeAI {
@@ -18,13 +22,15 @@ function getAIInstance(keyIndex?: number): GoogleGenerativeAI {
 }
 
 // Enhanced function to handle API key fallback with exponential backoff
-export async function executeWithFallback<T>(fn: (genAI: GoogleGenerativeAI) => Promise<T>, maxRetries = 3): Promise<T> {
+export async function executeWithFallback<T>(fn: (genAI: GoogleGenerativeAI) => Promise<T>, maxRetries = MAX_RETRIES): Promise<T> {
   let lastError: any;
-  let retryCount = 0;
+  let totalAttempts = 0;
+  const startTime = Date.now();
   
   // Try both keys with increasing delays
   for (let keyIndex = 0; keyIndex < 2; keyIndex++) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      totalAttempts++;
       try {
         // Add increasing delay between attempts to avoid rate limits
         if (attempt > 0 || keyIndex > 0) {
@@ -33,19 +39,46 @@ export async function executeWithFallback<T>(fn: (genAI: GoogleGenerativeAI) => 
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
-        return await fn(getAIInstance(keyIndex));
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`API request timed out after ${REQUEST_TIMEOUT/1000} seconds`)), 
+                    REQUEST_TIMEOUT);
+        });
+        
+        // Execute the function with a timeout
+        const result = await Promise.race([
+          fn(getAIInstance(keyIndex)),
+          timeoutPromise
+        ]) as T;
+        
+        const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[MANGA-CLASSIFIER] Request succeeded after ${totalAttempts} attempts (${elapsedTime}s)`);
+        
+        return result;
       } catch (error: any) {
         lastError = error;
-        console.error(`[MANGA-CLASSIFIER] Error with API key ${keyIndex + 1}, attempt ${attempt + 1}:`, 
-                     error.message || 'Unknown error');
+        const errorType = getErrorType(error);
+        
+        console.error(`[MANGA-CLASSIFIER] ${errorType} error with API key ${keyIndex + 1}, attempt ${attempt + 1}: ${error.message || 'Unknown error'}`);
         
         // If it's not a rate limit error, try the other key
-        if (!error.message?.includes('too many requests') && 
-            !error.message?.includes('rate limit') && 
-            !error.message?.includes('429')) {
+        if (!isRateLimitError(error)) {
+          console.log(`[MANGA-CLASSIFIER] Switching API keys due to non-rate-limit error`);
           break; // Break the retry loop for this key, try next key
         }
       }
+    }
+  }
+  
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.error(`[MANGA-CLASSIFIER] All API requests failed after ${totalAttempts} attempts (${totalTime}s)`);
+  
+  // Trigger garbage collection if available (in Node.js environments)
+  if (global.gc) {
+    try {
+      global.gc();
+      console.log(`[MANGA-CLASSIFIER] Manually triggered garbage collection after failures`);
+    } catch (e) {
+      // Ignore if not available
     }
   }
   
@@ -53,281 +86,294 @@ export async function executeWithFallback<T>(fn: (genAI: GoogleGenerativeAI) => 
   throw lastError || new Error('All API requests failed');
 }
 
-// Process a single image with enhanced context awareness and visual cues analysis
-export async function processEnhancedImage(
-  imagePath: string, 
-  previousMood: string | null, 
-  previousFilename: string | null,
-  nextFilename: string | null,
-  previousContext: string,
-  model: any
-): Promise<ClassificationResult> {
-  try {
-    const filename = path.basename(imagePath);
-    console.log(`[MANGA-CLASSIFIER] Enhanced processing of: ${filename}`);
-    
-    // Create image part for the model
-    const imageData = fs.readFileSync(imagePath);
-    const imageBase64 = imageData.toString('base64');
-    const mimeType = `image/${path.extname(imagePath).substring(1)}`;
-    const imagePart = { 
-      inlineData: {
-        data: imageBase64,
-        mimeType: mimeType
-      }
-    };
-    
-    // Build narrative context description based on previous analysis
-    let contextDescription = "This is the first page of the chapter.";
-    if (previousMood && previousFilename) {
-      contextDescription = `The previous page (${previousFilename}) was classified as "${previousMood}". ${previousContext}`;
-    }
-    
-    // Page position context
-    let positionContext = "";
-    if (!previousFilename && nextFilename) {
-      positionContext = "This is the first page of the chapter.";
-    } else if (!nextFilename && previousFilename) {
-      positionContext = "This is the last page of the chapter.";
-    } else if (previousFilename && nextFilename) {
-      positionContext = "This is a middle page of the chapter.";
-    }
-    
-    // Create the enhanced prompt with visual cues for each mood
-    const textPart = { text: `You are an expert manga analyst specializing in Detective Conan/Case Closed. Analyze this manga page carefully. ${positionContext} ${contextDescription}
-
-I need you to classify this page (${filename}) into exactly one of these mood categories:
-
-1. investigation: 
-   - Visual cues: Characters examining crime scenes, discussing clues, thoughtful expressions
-   - Examples: Detectives looking at evidence, characters interviewing witnesses
-   - Text cues: Dialog about crime details, hypothesizing about cases
-
-2. suspense: 
-   - Visual cues: Tense face expressions, dramatic angles, shadows, close-ups
-   - Examples: Characters looking worried/shocked, someone being followed
-   - Text cues: Ominous dialog, warning statements, threatening messages
-
-3. action: 
-   - Visual cues: Motion lines, dynamic poses, impact effects, speed indicators
-   - Examples: Chase scenes, fighting, running, physical confrontation
-   - Text cues: Exclamations, sound effects indicating physical activity
-
-4. revelation: 
-   - Visual cues: Wide-eyed expressions, pointing gestures, dramatic close-ups
-   - Examples: Character solving a case, villain being unmasked, truth being told
-   - Text cues: "The culprit is..." statements, confession dialog
-
-5. conclusion: 
-   - Visual cues: Relaxed poses, explanatory gestures, case wrap-up visuals
-   - Examples: Post-case discussions, culprit being taken away, case summary
-   - Text cues: Explanation of how the crime occurred, concluding remarks
-
-6. casual: 
-   - Visual cues: Relaxed expressions, everyday settings, regular clothing
-   - Examples: Characters eating together, school scenes, casual conversation
-   - Text cues: Friendly banter, jokes, everyday conversation
-
-7. tragic: 
-   - Visual cues: Crying expressions, downcast eyes, dark tones, rain effects
-   - Examples: Death scenes, character mourning, tragic revelations
-   - Text cues: Somber dialog, expressions of grief or regret
-
-Analyze the visual elements in the following order:
-1. Character facial expressions and body language
-2. Scene composition and environmental elements
-3. Text/dialog content and tone
-4. Narrative position (considering previous page's mood)
-
-Then use this structured thought process:
-1. Identify the most prominent visual and textual elements that indicate mood
-2. Consider how this page relates to the previous mood "${previousMood || "none"}"
-3. Determine the primary mood category for this page
-4. Assess your confidence in this classification (low, medium, high)
-5. Consider if this classification creates an unnatural transition from the previous mood
-
-Respond in this exact JSON format:
-{
-  "mood": "[ONE CATEGORY FROM THE LIST]",
-  "confidence": "[LOW/MEDIUM/HIGH]",
-  "visual_elements": "[BRIEF DESCRIPTION OF KEY VISUAL ELEMENTS]",
-  "reasoning": "[SHORT EXPLANATION OF WHY THIS MOOD WAS CHOSEN]",
-  "narrative_flow": "[COMMENT ON HOW THIS MOOD TRANSITIONS FROM THE PREVIOUS]"
+// Helper function to determine error type
+function getErrorType(error: any): string {
+  if (!error.message) return 'Unknown';
+  
+  if (error.message.includes('too many requests') || 
+      error.message.includes('rate limit') || 
+      error.message.includes('429')) {
+    return 'Rate limit';
+  }
+  
+  if (error.message.includes('timeout')) {
+    return 'Timeout';
+  }
+  
+  if (error.message.includes('network') || 
+      error.message.includes('connection')) {
+    return 'Network';
+  }
+  
+  if (error.message.includes('invalid') || 
+      error.message.includes('format')) {
+    return 'Format';
+  }
+  
+  return 'API';
 }
 
-Make sure you ONLY use one of the exact seven mood categories listed above in lowercase.` };
+// Helper function to check if error is rate limit related
+function isRateLimitError(error: any): boolean {
+  return error.message?.includes('too many requests') || 
+         error.message?.includes('rate limit') || 
+         error.message?.includes('429');
+}
+
+// Process three images at a time to provide context while keeping requests manageable
+export async function processTripleImages(
+  imageFiles: string[],
+  previousMood: string | null,
+  previousContext: string,
+  model: any
+): Promise<ClassificationResult[]> {
+  try {
+    const filenames = imageFiles.map(file => path.basename(file));
+    console.log(`[MANGA-CLASSIFIER] Processing 3-image group: ${filenames.join(", ")}`);
     
-    console.log(`[MANGA-CLASSIFIER] Sending enhanced request to Gemini for ${filename}`);
+    // Create image parts directly from files
+    const imageParts = [];
+    for (let i = 0; i < imageFiles.length; i++) {
+      const imagePath = imageFiles[i];
+      const imageData = fs.readFileSync(imagePath);
+      const imageBase64 = imageData.toString('base64');
+      const mimeType = `image/${path.extname(imagePath).substring(1)}`;
+      
+      imageParts.push({ 
+        inlineData: {
+          data: imageBase64,
+          mimeType: mimeType
+        }
+      });
+    }
+    
+    // Build context information
+    let positionContext = previousMood 
+      ? `Previous sequence ended with mood: ${previousMood}` 
+      : "This is the beginning of the chapter";
+    
+    // Create the prompt for analyzing three consecutive images
+    const textPart = { text: `You are a specialized Detective Conan manga analyst for soundtrack optimization. Your task is to analyze 3 consecutive manga pages and classify each page's dominant mood for precise OST mapping.
+
+**Context:**
+* ${positionContext}
+* ${previousContext ? `Previous context: ${previousContext}` : ''}
+
+**Analysis Instructions:**
+Identify the primary mood of EACH page by examining:
+1. **Character Presence:** Which characters are present (Conan/Shinichi, Ran, Kogoro, Detective Boys, FBI, Black Organization, etc.)
+2. **Facial Expressions:** Detective face, glasses glare, worried expressions, determined looks, etc.
+3. **Panel Structure:** Dynamic layouts, size/focus of panels, establishing shots
+4. **Scene Setting:** Location, lighting, weather (rain often indicates tension/tragedy)
+5. **Story Phase:** Case introduction, investigation, confrontation, revelation
+6. **Narrative Connection:** How these 3 pages connect and flow together
+
+**Core Concept:** Sound transitions should occur at meaningful narrative shifts, not between every page. Consider how these pages work together.
+
+**Mandatory Mood Categories:**
+Select ONE mood per page from this exact list:
+1. **intro:** Establishing scene/case, opening narration
+2. **love:** Romantic moments, general romantic tension
+3. **love_ran:** Specific focus on Ran's feelings for Shinichi
+4. **casual:** Everyday interactions outside the case
+5. **adventure:** Light investigation, exploration moments
+6. **comedy:** Humorous elements, comic relief
+7. **action_casual:** Standard chase/confrontation, lower stakes
+8. **action_serious:** High-stakes, dangerous situations
+9. **tragic:** Emotional, sad moments
+10. **tension:** Suspense building, mystery development
+11. **confrontation:** Facing suspects, accusation phase
+12. **investigation:** Active clue gathering, deduction
+13. **revelation:** Case solution explanation, "aha" moment
+14. **conclusion:** Case wrap-up, aftermath
+
+**Response Format:** JSON array only, one object per page:
+[
+  {
+    "filename": "${filenames[0]}",
+    "mood": "[CATEGORY]",
+    "visual_elements": "[Key visual elements: faces, layout, items]",
+    "reasoning": "[Specific evidence linking to mood category]",
+    "continuity": "[How this page connects to surrounding narrative]"
+  },
+  {
+    "filename": "${filenames[1]}",
+    "mood": "[CATEGORY]",
+    "visual_elements": "[Key visual elements]",
+    "reasoning": "[Evidence for classification]",
+    "continuity": "[Narrative connection]"
+  },
+  {
+    "filename": "${filenames[2]}",
+    "mood": "[CATEGORY]",
+    "visual_elements": "[Key visual elements]",
+    "reasoning": "[Evidence for classification]",
+    "continuity": "[Narrative connection]"
+  }
+]
+
+Focus on Detective Conan's visual language, storytelling patterns, and case structure. Consider both immediate page content and the overall narrative flow.` };
+    
+    console.log(`[MANGA-CLASSIFIER] Sending 3-image request to Gemini`);
     
     // Combine parts and send to the model
-    const parts = [imagePart, textPart];
+    const parts = [...imageParts, textPart];
     const result = await model.generateContent({
       contents: [{ role: "user", parts }],
+      generationConfig: {
+        temperature: 0.3, // Lower temperature for more consistent results
+      }
     });
     
     const response = await result.response.text();
-    console.log(`[MANGA-CLASSIFIER] Received enhanced response from Gemini:`, response);
+    console.log(`[MANGA-CLASSIFIER] Received 3-image response from Gemini`);
     
     // Parse the JSON response
     let parsedResponse;
     try {
-      // Extract JSON from response (handling possible text before/after the JSON)
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      // Extract JSON from response
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         parsedResponse = JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
       console.error(`[MANGA-CLASSIFIER] Error parsing JSON response:`, error);
+      throw new Error("Failed to parse 3-image response");
     }
     
-    // Extract the mood and other data
-    let category = 'investigation'; // Default fallback
-    let confidence: number | undefined = undefined;
-    let explanation: string | undefined = undefined;
-    
-    if (parsedResponse && parsedResponse.mood) {
-      const extractedMood = parsedResponse.mood.toLowerCase();
-      const validMoods = ['investigation', 'suspense', 'action', 'revelation', 'conclusion', 'casual', 'tragic'];
-      
-      if (validMoods.includes(extractedMood)) {
-        category = extractedMood as any;
-      }
-      
-      // Convert confidence string to numeric value
-      if (parsedResponse.confidence) {
-        switch(parsedResponse.confidence.toLowerCase()) {
-          case 'high': confidence = 0.9; break;
-          case 'medium': confidence = 0.7; break;
-          case 'low': confidence = 0.5; break;
-          default: confidence = 0.6; // Default medium-low
-        }
-      }
-      
-      // Compile explanation from various fields
-      explanation = [
-        parsedResponse.visual_elements, 
-        parsedResponse.reasoning, 
-        parsedResponse.narrative_flow
-      ].filter(Boolean).join(" | ");
-    } else {
-      // Fallback to regex extraction if JSON parsing failed
-      const moodMatch = response.match(/["']mood["']\s*:\s*["'](\w+)["']/i);
-      if (moodMatch && moodMatch[1]) {
-        const extractedMood = moodMatch[1].toLowerCase();
-        const validMoods = ['investigation', 'suspense', 'action', 'revelation', 'conclusion', 'casual', 'tragic'];
-        if (validMoods.includes(extractedMood)) {
-          category = extractedMood as any;
-        }
-      }
+    if (!parsedResponse || !Array.isArray(parsedResponse)) {
+      throw new Error("Invalid response format from 3-image analysis");
     }
     
-    console.log(`[MANGA-CLASSIFIER] Final classification for ${filename}: ${category} (confidence: ${confidence || 'unknown'})`);
+    // Process each result in the array
+    const results: ClassificationResult[] = [];
     
-    return {
-      filename: filename,
-      category: category as any,
-      confidence: confidence,
-      explanation: explanation
-    };
+    for (let i = 0; i < parsedResponse.length && i < filenames.length; i++) {
+      const pageResult = parsedResponse[i];
+      const filename = filenames[i];
+      
+      // Extract and validate the mood
+      let category: ClassificationResult['category'] = 'investigation'; // Default fallback
+      let explanation: string = "";
+      
+      if (pageResult?.mood) {
+        const extractedMood = pageResult.mood;
+        const validMoods: ClassificationResult['category'][] = [
+          'intro', 'love', 'love_ran', 'casual', 'adventure',
+          'comedy', 'action_casual', 'action_serious', 'tragic',
+          'tension', 'confrontation', 'investigation', 'revelation',
+          'conclusion'
+        ];
+        
+        // Check if the extracted mood is one of the valid categories
+        if ((validMoods as string[]).includes(extractedMood)) {
+          category = extractedMood as ClassificationResult['category'];
+        } else {
+          console.warn(`[MANGA-CLASSIFIER] Received invalid mood category for ${filename}: ${extractedMood}. Using fallback '${category}'.`);
+        }
+        
+        // Compile explanation from various fields
+        explanation = [
+          pageResult.visual_elements, 
+          pageResult.reasoning, 
+          pageResult.continuity || ""
+        ].filter(Boolean).join(" | ");
+      }
+      
+      results.push({
+        filename: filename,
+        category: category,
+        explanation: explanation
+      });
+      
+      console.log(`[MANGA-CLASSIFIER] Classified ${filename}: ${category}`);
+    }
+    
+    return results;
     
   } catch (error) {
-    console.error(`[MANGA-CLASSIFIER] Error in enhanced classification:`, error);
-    
-    // Return default classification
-    return {
-      filename: path.basename(imagePath),
-      category: 'investigation' as any, // Default fallback
-      confidence: 0.5, // Medium-low confidence for error cases
-      explanation: "Classification error occurred, defaulting to investigation"
-    };
+    console.error(`[MANGA-CLASSIFIER] Error in 3-image classification:`, error);
+    throw error;
   }
 }
 
-// Function to classify multiple images in a chapter using Gemini AI with improved load balancing
+// Simplified function to classify images in a chapter using a 3-image sliding window approach
 export async function classifyChapter(imageFiles: string[]): Promise<ClassificationResult[]> {
-  console.log(`[MANGA-CLASSIFIER] Starting enhanced classification of ${imageFiles.length} images with improved load balancing`);
+  console.log(`[MANGA-CLASSIFIER] Starting classification of ${imageFiles.length} images using 3-image sliding window`);
   
-  const results: ClassificationResult[] = [];
-  let previousMood: string | null = null;
-  let previousContext: string = "";
-  
-  // Process images in smaller batches to reduce rate limit issues
-  const batchSize = 5; // Process 5 images per batch
-  const batches: string[][] = [];
-  
-  // Split images into smaller batches
-  for (let i = 0; i < imageFiles.length; i += batchSize) {
-    batches.push(imageFiles.slice(i, i + batchSize));
+  // Process empty chapters gracefully
+  if (!imageFiles.length) {
+    console.log(`[MANGA-CLASSIFIER] No images to process.`);
+    return [];
   }
   
-  console.log(`[MANGA-CLASSIFIER] Split workload into ${batches.length} batches of up to ${batchSize} images each`);
+  let allResults: ClassificationResult[] = [];
+  let lastMood: string | null = null;
+  let lastContext: string = "";
   
-  // Alternate API keys between batches
-  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-    const batch = batches[batchIndex];
-    const keyIndex = batchIndex % 2; // Alternate between key 0 and key 1
-    
-    console.log(`[MANGA-CLASSIFIER] Processing batch ${batchIndex + 1}/${batches.length} with API key ${keyIndex + 1}`);
-    
-    // Add delay between batches to avoid rate limits
-    if (batchIndex > 0) {
-      const delay = 2000 + Math.random() * 1000;
-      console.log(`[MANGA-CLASSIFIER] Waiting ${delay.toFixed(0)}ms between batches`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-    
-    // Process each image in the batch
-    for (let i = 0; i < batch.length; i++) {
-      const imagePath = batch[i];
-      const globalIndex = batchIndex * batchSize + i;
-      console.log(`[MANGA-CLASSIFIER] Processing image ${globalIndex + 1}/${imageFiles.length} (Batch ${batchIndex + 1}, API key ${keyIndex + 1})`);
+  // Process in groups of 3 with a sliding window
+  for (let i = 0; i < imageFiles.length; i += 3) {
+    try {
+      // Get the next 3 images (or whatever remains)
+      const groupImages = imageFiles.slice(i, Math.min(i + 3, imageFiles.length));
       
-      try {
-        // Add small delay between individual images
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 500));
-        }
+      console.log(`[MANGA-CLASSIFIER] Processing group ${i/3 + 1}/${Math.ceil(imageFiles.length/3)}: ${groupImages.map(f => path.basename(f)).join(", ")}`);
+      
+      const results = await executeWithFallback(async (genAI) => {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        return processTripleImages(groupImages, lastMood, lastContext, model);
+      });
+      
+      allResults = [...allResults, ...results];
+      
+      // Update context from last processed image
+      if (results.length > 0) {
+        const lastResult = results[results.length - 1];
+        lastMood = lastResult.category;
+        lastContext = lastResult.explanation || "";
+      }
+      
+      // Add small delay between groups
+      if (i + 3 < imageFiles.length) {
+        const delay = 1000 + Math.random() * 1000;
+        console.log(`[MANGA-CLASSIFIER] Waiting ${delay.toFixed(0)}ms before next group`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+      
+    } catch (error) {
+      console.error(`[MANGA-CLASSIFIER] Error processing image group:`, error);
+      
+      // If group processing failed, log error and provide default classifications
+      const defaultResults = imageFiles.slice(i, Math.min(i + 3, imageFiles.length)).map((imagePath: string) => {
+        const filename = path.basename(imagePath);
+        const fallbackCategory = lastMood || 'investigation';
         
-        const result = await executeWithFallback(async (genAI) => {
-          const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-          return processEnhancedImage(
-            imagePath, 
-            previousMood, 
-            globalIndex > 0 ? path.basename(imageFiles[globalIndex - 1]) : null,
-            globalIndex < imageFiles.length - 1 ? path.basename(imageFiles[globalIndex + 1]) : null,
-            previousContext,
-            model
-          );
-        });
-        
-        results.push(result);
-        previousMood = result.category;
-        previousContext = result.explanation || "";
-      } catch (error) {
-        console.error(`[MANGA-CLASSIFIER] Failed to process image ${path.basename(imagePath)}, using fallback:`, error);
-        
-        // Use a fallback classification based on previous mood or default to investigation
-        const fallbackCategory = previousMood || 'investigation';
-        const fallbackResult: ClassificationResult = {
-          filename: path.basename(imagePath),
+        const result: ClassificationResult = {
+          filename: filename,
           category: fallbackCategory as any,
-          confidence: 0.5,
-          explanation: `Failed to process image, fallback based on previous page mood: ${fallbackCategory}`
+          explanation: `Classification failed, using fallback: ${fallbackCategory}`
         };
         
-        results.push(fallbackResult);
-        previousMood = fallbackResult.category;
-        previousContext = fallbackResult.explanation || "";
+        console.log(`[MANGA-CLASSIFIER] Using fallback classification for ${filename}: ${fallbackCategory}`);
+        return result;
+      });
+      
+      allResults = [...allResults, ...defaultResults];
+      
+      // Update context from the last default result
+      if (defaultResults.length > 0) {
+        lastMood = defaultResults[defaultResults.length - 1].category;
       }
     }
   }
   
-  // Second pass: Smooth out any abrupt transitions
-  smoothTransitions(results);
+  // // Apply smoothing to ensure reasonable OST transitions
+  // console.log(`[MANGA-CLASSIFIER] Applying smoothing to ${allResults.length} results`);
+  // smoothTransitions(allResults);
   
-  console.log(`[MANGA-CLASSIFIER] Enhanced classification complete. Total results: ${results.length}`);
+  // console.log(`[MANGA-CLASSIFIER] Classification complete. Total results: ${allResults.length}`);
   
-  return results;
+  return allResults;
 }
 
 // Function to smooth out abrupt transitions between pages

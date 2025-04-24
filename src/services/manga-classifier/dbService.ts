@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { ClassificationResult } from '@/utils/manga-classifier/types';
+import { ClassificationResult } from '@/types';
 
 // Function to check if chapter exists in database and return its data
 export async function getChapterFromDatabase(chapterNumber: number) {
@@ -39,18 +39,18 @@ export async function storeClassificationsInDatabase(
     console.log('[MANGA-CLASSIFIER] Warning: Could not verify schema, will attempt insert without explanation field');
   }
   
-  // Create or update chapter record with explicit ID matching chapter_number
-  const { data: chapterData, error: chapterError } = await supabase
+  // Create or update chapter record
+  const { error: chapterError } = await supabase
     .from('manga_chapters')
-    .upsert({
-      id: chapterNumber, // Set ID to match chapter_number
-      chapter_number: chapterNumber,
-      total_pages: classifications.length,
-      processed_at: new Date().toISOString()
-    })
-    .select()
-    .single();
-  
+    .upsert(
+      {
+        chapter_number: chapterNumber,
+        total_pages: classifications.length,
+        processed_at: new Date().toISOString()
+      },
+      { onConflict: 'chapter_number' }
+    );
+
   if (chapterError) {
     console.error('Error storing chapter data:', chapterError);
     throw new Error('Failed to store chapter data');
@@ -60,11 +60,10 @@ export async function storeClassificationsInDatabase(
   const pageClassifications = classifications.map((classification, index) => {
     // Base record with fields we know exist
     const record: any = {
-      chapter_id: chapterData.id,
+      chapter_number: chapterNumber,
       page_number: index + 1,
       filename: classification.filename,
-      category: classification.category,
-      confidence: classification.confidence || null
+      category: classification.category
     };
     
     // Only add explanation if we think the column exists

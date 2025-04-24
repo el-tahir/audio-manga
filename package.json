@@ -9,15 +9,23 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.16.0",
     "@google/genai": "^0.3.1",
     "@google/generative-ai": "^0.24.0",
     "@supabase/supabase-js": "^2.49.1",
+    "@vercel/blob": "^0.27.3",
     "adm-zip": "^0.5.16",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
     "jszip": "^3.10.1",
+    "lucide-react": "^0.486.0",
     "next": "^15.2.3",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "sharp": "^0.33.5",
+    "tsx": "^4.19.3",
+    "yt-search": "^2.12.1",
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
