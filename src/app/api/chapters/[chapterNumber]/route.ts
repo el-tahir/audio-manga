@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: { chapterNumber: string } }
 ) {
   try {
-    const { chapterNumber: chapterNumberParam } = await params;
+    const { chapterNumber: chapterNumberParam } = params;
     const chapterNumber = Number(chapterNumberParam);
     if (isNaN(chapterNumber)) {
       return NextResponse.json(

@@ -70,9 +70,9 @@ export default function PageView() {
   }, [chapterNumber, pageNumber]);
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)] text-[var(--foreground)]">
       {/* Header with back button and category selector */}
-      <div className="w-full bg-gray-900 p-4">
+      <div className="w-full bg-[var(--bg-secondary)] p-3 shadow-md">
         <div className="container mx-auto flex justify-between items-center">
           <button
             onClick={() => router.back()}
@@ -120,7 +120,7 @@ export default function PageView() {
 
       {/* Classification details */}
       {!loading && !error && classification && (
-        <div className="w-full bg-gray-900 p-4">
+        <div className="w-full bg-[var(--bg-secondary)] p-4 border-t border-[var(--border-color)]">
           <div className="container mx-auto text-white">
             {classification.confidence && (
               <p className="mb-2">

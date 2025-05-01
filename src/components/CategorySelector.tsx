@@ -65,10 +65,10 @@ export default function CategorySelector({
         value={currentCategory}
         onChange={(e) => handleCategoryChange(e.target.value)}
         disabled={isLoading}
-        className="w-full px-3 py-2 bg-white rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+        className="w-full px-3 py-2 bg-[var(--bg-tertiary)] text-[var(--foreground)] rounded border border-[var(--border-color)] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
       >
         {CATEGORIES.map((category) => (
-          <option key={category} value={category}>
+          <option key={category} value={category} className="text-black bg-white">
             {category.charAt(0).toUpperCase() + category.slice(1)}
           </option>
         ))}

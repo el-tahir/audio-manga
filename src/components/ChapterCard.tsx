@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { BookOpen, Edit } from 'lucide-react'; // Icons for links
 
 interface ChapterCardProps {
   chapterNumber: number;
@@ -12,30 +12,55 @@ interface ChapterCardProps {
 }
 
 export default function ChapterCard({ chapterNumber, totalPages, processedAt, status }: ChapterCardProps) {
-  const formattedDate = format(new Date(processedAt), 'MMM d, yyyy');
-  
+  // Format date safely
+  let formattedDate = 'N/A';
+  if (processedAt) {
+    try {
+      formattedDate = format(parseISO(processedAt), 'MMM d, yyyy');
+    } catch (e) {
+      console.error("Error formatting date:", processedAt, e);
+    }
+  }
+
+  // Determine status color
+  const getStatusClasses = (status: string): string => {
+    if (status === 'completed') return 'text-green-400';
+    if (status === 'failed') return 'text-red-400';
+    if (status.startsWith('processing') || status === 'pending') return 'text-yellow-400';
+    return 'text-gray-400';
+  };
+
   return (
-    <div className="border rounded-lg p-4">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="text-xl font-semibold">Chapter {chapterNumber}</h3>
-        <div className="flex gap-2">
-          <Link 
-            href={`/reader/${chapterNumber}`} 
-            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-          >
-            Read
-          </Link>
-          <Link 
-            href={`/moods/${chapterNumber}`} 
-            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 transition"
-          >
-            View Moods
-          </Link>
-        </div>
+    // Apply consistent card styling
+    <div className="bg-[var(--bg-secondary)] rounded-lg shadow-md p-4 border border-[var(--border-color)] flex flex-col justify-between transition-transform hover:scale-[1.02] hover:shadow-lg">
+      <div>
+        <h3 className="text-lg font-semibold mb-2 text-white">Chapter {chapterNumber}</h3>
+        <p className="text-sm text-gray-400 mb-1">{totalPages > 0 ? `${totalPages} pages` : 'No pages'}</p>
+        <p className="text-sm text-gray-400 mb-1">Processed: {formattedDate}</p>
+        <p className="text-sm mb-3">
+          Status: <span className={`font-medium ${getStatusClasses(status)}`}>{status}</span>
+        </p>
       </div>
-      <p className="text-gray-600">{totalPages} pages</p>
-      <p className="text-gray-500 text-sm">Processed: {formattedDate}</p>
-      <p className="text-gray-500 text-sm">Status: {status}</p>
+      <div className="flex flex-col sm:flex-row gap-2 mt-auto pt-3 border-t border-[var(--border-color)]">
+        <Link 
+          href={`/reader/${chapterNumber}`} 
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-500 transition-colors disabled:opacity-50"
+          aria-disabled={status !== 'completed'}
+          onClick={(e) => { if (status !== 'completed') e.preventDefault(); }} // Prevent navigation if not completed
+        >
+          <BookOpen size={16} />
+          Read
+        </Link>
+        <Link 
+          href={`/moods/${chapterNumber}`} 
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-teal-600 text-white text-sm rounded hover:bg-teal-500 transition-colors disabled:opacity-50"
+          aria-disabled={status !== 'completed'}
+          onClick={(e) => { if (status !== 'completed') e.preventDefault(); }} // Prevent navigation if not completed
+        >
+          <Edit size={16} />
+          View Moods
+        </Link>
+      </div>
     </div>
   );
 }

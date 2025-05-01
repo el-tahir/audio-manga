@@ -148,7 +148,7 @@ export async function processTripleImages(
     }
     
     // Build context information
-    let positionContext = previousMood 
+    const positionContext = previousMood 
       ? `Previous sequence ended with mood: ${previousMood}` 
       : "This is the beginning of the chapter";
     
