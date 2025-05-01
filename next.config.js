@@ -1,10 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // Include the credentials file in the build output
-    outputFileTracingIncludes: {
-      '/**/*': ['./google-credentials.json'], // Removed './' prefix
-    },
+    // Remove outputFileTracingIncludes as it's not suitable for non-committed secrets
   },
   images: {
     domains: ['storage.googleapis.com'],
