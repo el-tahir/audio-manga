@@ -58,8 +58,8 @@ export async function POST(
     console.log(`[API download-chapter] Created temp download dir: ${tempDownloadDir}`);
 
     // 3. Execute Python script
-    // Ensure python command is correct for your environment (python vs python3)
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    // Use 'python' as Vercel's Linux env might not have 'python3' link
+    const pythonCmd = 'python'; // Changed from platform check
     const scriptPath = path.resolve(process.cwd(), 'scripts', 'download_chapter.py');
     const command = `${pythonCmd} "${scriptPath}" ${DETECTIVE_CONAN_SLUG} "${chapterNumberStr}" --output-dir "${tempDownloadDir}"`;
 
