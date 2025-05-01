@@ -3,7 +3,7 @@ const nextConfig = {
   experimental: {
     // Include the credentials file in the build output
     outputFileTracingIncludes: {
-      '/**/*': ['./google-credentials.json'], // Include for all routes, adjust path if needed
+      '/**/*': ['google-credentials.json'], // Removed './' prefix
     },
   },
   images: {
