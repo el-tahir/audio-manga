@@ -1,6 +1,60 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+export async function GET(
+  request: Request, // Keep request parameter even if unused for consistency
+  { params }: { params: Promise<{ chapterNumber: string; pageNumber: string }> }
+) {
+  try {
+    // Await dynamic params
+    const { chapterNumber: chapterNumberParam, pageNumber: pageNumberParam } = await params;
+    const chapterNumber = Number(chapterNumberParam);
+    const pageNumber = Number(pageNumberParam);
+    if (isNaN(chapterNumber) || isNaN(pageNumber)) {
+      return NextResponse.json(
+        { error: 'Invalid chapterNumber or pageNumber' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch the specific classification
+    const { data: classification, error } = await supabase
+      .from('manga_page_classifications')
+      .select('page_number, category, filename, explanation') // Select desired fields
+      .eq('chapter_number', chapterNumber)
+      .eq('page_number', pageNumber)
+      .maybeSingle(); // Use maybeSingle() to return null if not found, instead of error
+
+    if (error) {
+      console.error('[API .../[pageNumber] GET] DB error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (!classification) {
+      return NextResponse.json({ error: 'Classification not found' }, { status: 404 });
+    }
+
+    // Return the found classification
+    // Map DB fields to consistent camelCase if needed, here they match
+    return NextResponse.json({
+      pageNumber: classification.page_number,
+      category: classification.category,
+      filename: classification.filename,
+      explanation: classification.explanation
+    }, { status: 200 });
+
+  } catch (err: any) {
+    console.error(
+      '[API .../[pageNumber] GET] Internal server error:',
+      err
+    );
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ chapterNumber: string; pageNumber: string }> }

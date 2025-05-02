@@ -20,9 +20,10 @@ function getExtensionFromContentType(contentType: string | null): string {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { chapterNumber: string } }
+  { params }: { params: Promise<{ chapterNumber: string }> }
 ) {
-  const { chapterNumber: chapterNumberStr } = params;
+  const resolvedParams = await params;
+  const { chapterNumber: chapterNumberStr } = resolvedParams;
   if (!chapterNumberStr || typeof chapterNumberStr !== 'string') {
     return NextResponse.json({ error: 'Invalid chapter number format' }, { status: 400 });
   }

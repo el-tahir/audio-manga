@@ -2,21 +2,12 @@ import Link from 'next/link';
 
 export default function Navbar() {
   return (
-    <nav style={{
-      padding: '1rem',
-      backgroundColor: '#0C0A0AFF',
-      marginBottom: '1rem'
-    }}>
-      <div style={{
-        display: 'flex',
-        gap: '1rem',
-        maxWidth: '800px',
-        margin: '0 auto'
-      }}>
-        <Link href="/" style={{ color: 'white', textDecoration: 'none' }}>
+    <nav className="p-4 bg-[var(--bg-primary)] mb-4">
+      <div className="container mx-auto flex gap-4 max-w-4xl">
+        <Link href="/" className="text-white no-underline hover:text-gray-300 transition-colors">
           Home
         </Link>
-        <Link href="/manga-classifier" style={{ color: 'white', textDecoration: 'none' }}>
+        <Link href="/manga-classifier" className="text-white no-underline hover:text-gray-300 transition-colors">
           Manga Classifier
         </Link>
       </div>

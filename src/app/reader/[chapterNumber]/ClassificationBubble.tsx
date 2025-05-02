@@ -2,56 +2,27 @@
 
 import { useEffect, useState } from 'react';
 import { ClassificationResult } from '@/types';
+import usePageObserver from './usePageObserver';
 
 interface ClassificationBubbleProps {
   classifications: ClassificationResult[];
 }
 
 export default function ClassificationBubble({ classifications }: ClassificationBubbleProps) {
-  const [currentPage, setCurrentPage] = useState(1);
+  const currentPage = usePageObserver();
   const [currentCategory, setCurrentCategory] = useState<ClassificationResult['category'] | null>(null);
   
   useEffect(() => {
-    // Set up intersection observer to detect which page is in view
-    const observerOptions = {
-      root: null, // Use viewport as root
-      rootMargin: '0px',
-      threshold: 0.5 // Element is considered in view when 50% visible
-    };
-    
-    const pageObserver = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          // Extract page number from the element ID (format: page-X)
-          const pageId = entry.target.id;
-          const pageNumMatch = pageId.match(/page-(\d+)/);
-          if (pageNumMatch && pageNumMatch[1]) {
-            const pageNum = parseInt(pageNumMatch[1], 10);
-            setCurrentPage(pageNum);
-            
-            // Find classification for the current page
-            const classification = classifications.find(c => {
-              if ('page_number' in c && (c as any).page_number === pageNum) {
-                return true;
-              }
-              const filePageMatch = c.filename.match(/page_(\d+)/i);
-              return filePageMatch && parseInt(filePageMatch[1], 10) === pageNum;
-            });
-            setCurrentCategory(classification ? classification.category : null);
-          }
-        }
-      });
-    }, observerOptions);
-    
-    // Observe all page elements
-    document.querySelectorAll('[id^="page-"]').forEach(page => {
-      pageObserver.observe(page);
+    // Find classification for the current page
+    const classification = classifications.find(c => {
+      if ('page_number' in c && (c as any).page_number === currentPage) {
+        return true;
+      }
+      const filePageMatch = c.filename.match(/page_(\d+)/i);
+      return filePageMatch && parseInt(filePageMatch[1], 10) === currentPage;
     });
-    
-    return () => {
-      pageObserver.disconnect();
-    };
-  }, [classifications]);
+    setCurrentCategory(classification ? classification.category : null);
+  }, [currentPage, classifications]);
   
   // Don't render if no category is available
   if (!currentCategory) return null;

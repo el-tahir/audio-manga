@@ -1,16 +1,18 @@
 /**
  * Background processor for manga chapters
  */
+import path from 'path';
 import { supabase } from '@/lib/supabase';
 import { uploadFileToGCS } from '@/utils/gcsUtils';
 import { extractArchive } from '@/utils/manga-classifier/archiveUtils';
 import { getImageFiles } from '@/utils/manga-classifier/imageUtils';
 import { classifyChapter } from '@/services/manga-classifier/aiService';
 import { storeClassificationsInDatabase } from '@/services/manga-classifier/dbService';
+import { cleanupTempFiles } from '@/utils/manga-classifier/fileUtils';
 
 export async function processChapterInBackground(chapterNumber: number, sourceFilePath: string): Promise<void> {
+  let extractDir: string | undefined;
   try {
-    let extractDir: string;
     let classifications: any[];
     // File setup: update status and prepare source archive
     await supabase
@@ -137,5 +139,21 @@ export async function processChapterInBackground(chapterNumber: number, sourceFi
         error_message: error instanceof Error ? error.message : String(error)
       })
       .eq('chapter_number', chapterNumber);
+  } finally {
+    // Cleanup temporary files and directories
+    if (extractDir) {
+      console.log(`[BACKGROUND] Cleaning up extraction directory: ${extractDir}`);
+      cleanupTempFiles(extractDir);
+    }
+    if (sourceFilePath) {
+      const sourceDir = path.dirname(sourceFilePath);
+      // Only clean up if it looks like one of our temp dirs
+      if (path.basename(sourceDir).startsWith('manga-classifier-')) {
+        console.log(`[BACKGROUND] Cleaning up source directory: ${sourceDir}`);
+        cleanupTempFiles(sourceDir);
+      } else {
+        console.log(`[BACKGROUND] Skipping cleanup for non-temporary source directory: ${sourceDir}`);
+      }
+    }
   }
 }

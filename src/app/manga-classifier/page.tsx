@@ -24,6 +24,9 @@ interface Chapter {
   // Add other potential fields if needed from your API response
 }
 
+// Define possible states for the input/chapter interaction
+type InputChapterStateType = 'idle' | 'invalid' | 'ready_new' | 'processing' | 'completed' | 'failed_retryable';
+
 const POLLING_INTERVAL = 5000; // Poll every 5 seconds
 
 export default function MangaClassifier() {
@@ -34,9 +37,13 @@ export default function MangaClassifier() {
   const [loadingStoredChapters, setLoadingStoredChapters] = useState(true);
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   
+  // State derived from inputChapterState
   const [inputStatus, setInputStatus] = useState<{ message: string; type: 'info' | 'warning' | 'error' | 'success' | 'none' }>({ message: '', type: 'none' });
-  const [isSubmitDisabled, setIsSubmitDisabled] = useState<boolean>(false);
-  const [submitButtonText, setSubmitButtonText] = useState<string>('Download & Classify');
+  const [isSubmitDisabled, setIsSubmitDisabled] = useState<boolean>(true); // Default to true when idle
+  const [submitButtonText, setSubmitButtonText] = useState<string>('Enter Chapter Number');
+
+  // New state to manage overall input/chapter condition
+  const [inputChapterState, setInputChapterState] = useState<InputChapterStateType>('idle');
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -74,41 +81,69 @@ export default function MangaClassifier() {
   }, []);
 
   // --- Input Handling & Validation ---
+  // Effect 1: Determine the inputChapterState based on input and stored data
   useEffect(() => {
     if (!chapterNumberInput) {
-      setInputStatus({ message: '', type: 'none' });
-      setIsSubmitDisabled(false);
-      setSubmitButtonText('Download & Classify');
+      setInputChapterState('idle');
       return;
     }
     const num = parseInt(chapterNumberInput, 10);
     if (isNaN(num)) {
-      setInputStatus({ message: 'Please enter a valid number.', type: 'error' });
-      setIsSubmitDisabled(true);
-      setSubmitButtonText('Download & Classify');
+      setInputChapterState('invalid');
       return;
     }
     const existingChapter = storedChapters.find(c => c.chapter_number === num);
     if (existingChapter) {
       if (existingChapter.status === 'completed') {
+        setInputChapterState('completed');
+      } else if (existingChapter.status === 'failed') {
+        setInputChapterState('failed_retryable');
+      } else { // Includes processing, pending, etc.
+        setInputChapterState('processing');
+      }
+    } else {
+      setInputChapterState('ready_new'); // Ready to download a new chapter
+    }
+  }, [chapterNumberInput, storedChapters]);
+
+  // Effect 2: Set UI states based on inputChapterState
+  useEffect(() => {
+    const num = chapterNumberInput;
+    switch (inputChapterState) {
+      case 'idle':
+        setInputStatus({ message: '', type: 'none' });
+        setIsSubmitDisabled(true);
+        setSubmitButtonText('Enter Chapter Number');
+        break;
+      case 'invalid':
+        setInputStatus({ message: 'Please enter a valid number.', type: 'error' });
+        setIsSubmitDisabled(true);
+        setSubmitButtonText('Invalid Input');
+        break;
+      case 'completed':
         setInputStatus({ message: `Chapter ${num} is already processed.`, type: 'success' });
         setIsSubmitDisabled(true);
         setSubmitButtonText('Already Processed');
-      } else if (existingChapter.status === 'failed') {
+        break;
+      case 'failed_retryable':
         setInputStatus({ message: `Chapter ${num} failed previously. Ready to retry.`, type: 'warning' });
         setIsSubmitDisabled(false);
         setSubmitButtonText('Retry Chapter');
-      } else {
-        setInputStatus({ message: `Chapter ${num} is currently processing (Status: ${existingChapter.status}).`, type: 'info' });
+        break;
+      case 'processing':
+        const existing = storedChapters.find(c => c.chapter_number === parseInt(num, 10));
+        setInputStatus({ message: `Chapter ${num} is currently processing (Status: ${existing?.status || '...'}).`, type: 'info' });
         setIsSubmitDisabled(true);
         setSubmitButtonText('Processing...');
-      }
-    } else {
-      setInputStatus({ message: '', type: 'none' }); // Ready to download
-      setIsSubmitDisabled(false);
-      setSubmitButtonText('Download & Classify');
+        break;
+      case 'ready_new':
+      default:
+        setInputStatus({ message: '', type: 'none' }); // Ready to download
+        setIsSubmitDisabled(false);
+        setSubmitButtonText('Download & Classify');
+        break;
     }
-  }, [chapterNumberInput, storedChapters]);
+  }, [inputChapterState, chapterNumberInput, storedChapters]); // Include dependencies used inside switch
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setChapterNumberInput(e.target.value);

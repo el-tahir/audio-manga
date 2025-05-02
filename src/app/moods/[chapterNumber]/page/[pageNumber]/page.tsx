@@ -29,15 +29,22 @@ export default function PageView() {
   useEffect(() => {
     async function fetchClassification() {
       try {
-        const res = await fetch(`/api/chapters/${chapterNumber}/classifications`);
-        if (!res.ok) throw new Error('Failed to fetch classifications');
-        const all: { pageNumber: number; category: string; filename?: string; explanation?: string }[] = await res.json();
-        const found = all.find((c) => c.pageNumber === Number(pageNumber));
-        if (!found) throw new Error(`Classification for page ${pageNumber} not found`);
+        // Call the new endpoint for a single classification
+        const res = await fetch(`/api/chapters/${chapterNumber}/classifications/${pageNumber}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+             throw new Error(`Classification for page ${pageNumber} not found`);
+          } else {
+            throw new Error(`Failed to fetch classification (status: ${res.status})`);
+          }
+        }
+        // Response is now the single classification object
+        const found: { pageNumber: number; category: string; filename?: string; explanation?: string } = await res.json();
+        
         setClassification({
-          id: Number(pageNumber),
+          id: found.pageNumber, // Use found.pageNumber directly
           category: found.category,
-          confidence: null,
+          confidence: null, // Confidence isn't returned by this API
           explanation: found.explanation || null
         });
       } catch (err) {

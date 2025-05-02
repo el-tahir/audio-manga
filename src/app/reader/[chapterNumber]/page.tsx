@@ -163,7 +163,7 @@ export default async function ChapterReaderPage({ params }: PageParams) {
                   />
                 ) : (
                   // Error placeholder for individual image - styled consistently
-                  <div className="w-full aspect-[2/3] bg-[var(--bg-tertiary)]/50 flex flex-col items-center justify-center text-red-400 p-4">
+                  <div className="w-full aspect-[2/3] bg-[var(--bg-tertiary)]/50 flex flex-col items-center justify-center text-red-400 p-4 border border-[var(--border-color)] rounded-md">
                     <ImageOff className="w-16 h-16 mb-3 text-gray-500" />
                     <p className="font-semibold text-sm text-red-300">Failed to load Page {page.page_number}</p>
                     {page.error && <p className="text-xs text-red-500 mt-1 text-center max-w-xs">({page.error})</p>}
