@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // Remove outputFileTracingIncludes as it's not suitable for non-committed secrets
+    output: 'standalone',
+    
   },
   images: {
     domains: ['storage.googleapis.com'],

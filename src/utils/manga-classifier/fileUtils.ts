@@ -9,22 +9,6 @@ export async function createTempDir() {
   return tempDir;
 }
 
-// Function to save uploaded file to temporary location
-export async function saveFile(formData: FormData): Promise<string> {
-  const file = formData.get('archive') as File;
-  if (!file) {
-    throw new Error('No file uploaded');
-  }
-
-  const tempDir = await createTempDir();
-  const filePath = path.join(tempDir, file.name);
-  
-  const fileArrayBuffer = await file.arrayBuffer();
-  fs.writeFileSync(filePath, Buffer.from(fileArrayBuffer));
-  
-  return filePath;
-}
-
 // Function to clean up temporary files
 export function cleanupTempFiles(dirPath: string) {
   try {

@@ -20,6 +20,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<'chapter_number' | 'processed_at'>('chapter_number');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     document.title = "Detective Conan - Chapter Overview";
@@ -50,6 +51,12 @@ export default function HomePage() {
     fetchChapters();
   }, [sortBy, sortOrder]);
 
+  const filteredChapters = chapters
+    ? chapters.filter(chapter => 
+        chapter.chapter_number.toString().includes(searchQuery.trim())
+      )
+    : [];
+
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--foreground)]">
       <Navbar />
@@ -65,27 +72,36 @@ export default function HomePage() {
           </p>
         </div>
         
-        {!loading && chapters && chapters.length > 0 && (
-          <div className="flex justify-end items-center gap-4 mb-6">
-            <span className="text-sm text-gray-400 flex items-center gap-1">
-              <ArrowDownUp size={16} /> Sort by:
-            </span>
-            <select 
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="chapter_number">Chapter Number</option>
-              <option value="processed_at">Date Processed</option>
-            </select>
-            <select 
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </select>
+        {!loading && chapters && (
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+            <input
+              type="text"
+              placeholder="Search Chapter..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-4 py-2 text-base text-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-full md:w-64"
+            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400 flex items-center gap-1 shrink-0">
+                <ArrowDownUp size={16} /> Sort by:
+              </span>
+              <select 
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="chapter_number">Chapter Number</option>
+                <option value="processed_at">Date Processed</option>
+              </select>
+              <select 
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </div>
           </div>
         )}
         
@@ -114,9 +130,18 @@ export default function HomePage() {
           </div>
         )}
 
-        {!loading && !error && chapters && chapters.length > 0 && (
+        {!loading && !error && filteredChapters.length === 0 && chapters && chapters.length > 0 && (
+          <div className="text-center py-12 px-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-md">
+            <h2 className="text-xl font-semibold text-gray-300 mb-3">No Matches Found</h2>
+            <p className="text-gray-400 mb-6">
+              No chapters match your search query "{searchQuery}".
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && filteredChapters.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-            {chapters.map((chapter: Chapter) => (
+            {filteredChapters.map((chapter: Chapter) => (
               <ChapterCard 
                 key={chapter.chapter_number}
                 chapterNumber={chapter.chapter_number}
