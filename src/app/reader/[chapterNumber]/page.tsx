@@ -1,16 +1,15 @@
 import Navbar from '@/components/Navbar';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import Image from 'next/image';
 import PageCounter from './PageCounter';
 import ClassificationBubble from './ClassificationBubble';
 import AudioPlayer from './AudioPlayer';
 import { headers } from 'next/headers';
 import {
   AlertTriangle, 
-  ImageOff, 
-  ArrowLeft // Added for back button consistency
+  ArrowLeft,
 } from 'lucide-react';
+import ReaderContent from './ReaderContent';
 
 interface PageParams {
   params: {
@@ -35,27 +34,65 @@ interface ClassificationData {
   filename: string;
 }
 
+// Define possible statuses for the next chapter
+type ChapterStatus = 'completed' | 'pending' | 'processing' | 'failed' | 'not_found' | 'downloading';
+
+// Keep ChapterData interface for data fetching type safety
+interface ChapterData {
+  chapter_number: number;
+  total_pages: number;
+}
+
 export default async function ChapterReaderPage({ params }: PageParams) {
   // Await params before accessing its properties to fix Next.js 15 async params error
   const { chapterNumber: chapterNumberString } = await params;
   const chapterNumber = parseInt(chapterNumberString);
+  const nextChapterNumber = chapterNumber + 1; // Calculate next chapter number
   
   let chapterData: { chapter_number: number; total_pages: number } | null = null;
   let classifications: ClassificationData[] | null = null;
   let pages: Page[] = [];
   let overallError: string | null = null;
+  let nextChapterStatus: ChapterStatus = 'not_found'; // Default status
 
   try {
-    // Fetch chapter info first
-    const { data: chapterInfo, error: chapterError } = await supabase
-      .from('manga_chapters')
-      .select('chapter_number, total_pages')
-      .eq('chapter_number', chapterNumber)
-      .single();
+    // Fetch current chapter info and next chapter status in parallel
+    const [chapterResult, nextChapterResult] = await Promise.all([
+      supabase
+        .from('manga_chapters')
+        .select('chapter_number, total_pages')
+        .eq('chapter_number', chapterNumber)
+        .single(),
+      supabase
+        .from('manga_chapters')
+        .select('status')
+        .eq('chapter_number', nextChapterNumber)
+        .maybeSingle() // Use maybeSingle as the next chapter might not exist
+    ]);
 
-    if (chapterError) throw new Error(`Database error fetching chapter info: ${chapterError.message}`);
-    if (!chapterInfo) throw new Error(`Chapter ${chapterNumber} not found in database.`);
+    // Process current chapter info
+    const { data: chapterInfo, error: chapterError } = chapterResult;
+    if (chapterError && chapterError.code !== 'PGRST116') { // Ignore 'No rows found' for single()
+      throw new Error(`Database error fetching chapter info: ${chapterError.message}`);
+    }
+    if (!chapterInfo) {
+      throw new Error(`Chapter ${chapterNumber} not found in database.`);
+    }
     chapterData = chapterInfo;
+
+    // Process next chapter status
+    const { data: nextChapterInfo, error: nextChapterError } = nextChapterResult;
+    if (nextChapterError && nextChapterError.code !== 'PGRST116') { // Ignore 'No rows found' for maybeSingle()
+      console.error(`Database error fetching next chapter status: ${nextChapterError.message}`);
+      // Potentially treat this as 'not_found' or handle differently
+      nextChapterStatus = 'not_found'; // Or maybe 'failed' to indicate DB error?
+    } else if (nextChapterInfo) {
+      // Map DB status to our defined ChapterStatus type
+      // Assuming DB status matches our type, otherwise add mapping logic here
+      nextChapterStatus = nextChapterInfo.status as ChapterStatus;
+    } else {
+      nextChapterStatus = 'not_found'; // Explicitly set if null/undefined data
+    }
 
     // Fetch page classifications
     const { data: classificationData, error: classificationsError } = await supabase
@@ -115,6 +152,7 @@ export default async function ChapterReaderPage({ params }: PageParams) {
     pages = [];
     classifications = null;
     chapterData = null;
+    nextChapterStatus = 'not_found'; // Reset on overall error
   }
 
   return (
@@ -123,68 +161,36 @@ export default async function ChapterReaderPage({ params }: PageParams) {
       <Navbar />
       {/* Use consistent padding and max-width */}
       <main className="flex-1 container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
-        {/* Header Section - Apply Tailwind classes */} 
+        {/* Header Section (Partially moved to ReaderContent) */}
+        {/* Keep Back Button and Title here */} 
         <div className="mb-6 md:mb-8 flex items-center justify-between">
           <Link href="/" className="inline-flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors">
             <ArrowLeft size={16} />
             Back to Chapters
           </Link>
           {chapterData && (
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-center text-white">Chapter {chapterData.chapter_number}</h1>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-center text-white flex-1 px-4"> {/* Allow title to take space */}
+              Chapter {chapterData.chapter_number}
+            </h1>
           )}
-          <div className="w-24"></div> {/* Spacer */}
-        </div>
-        
-        {/* Overall Error Display - Styled like GlobalFeedback */} 
-        {overallError && (
-           <div className="flex items-center gap-3 p-4 rounded-md text-sm bg-red-900/30 border border-red-700 text-red-300 mb-6">
-             <AlertTriangle size={20} />
-             <div>
-               <p className="font-semibold">Error loading chapter:</p>
-               <p>{overallError}</p>
-             </div>
-           </div>
-        )}
-        
-        {/* Pages Display */} 
-        {!overallError && chapterData && (
-          <div className="flex flex-col items-center gap-4 max-w-2xl mx-auto pb-24"> {/* Reduced max-width for focus, more padding-bottom */} 
-            {pages.map((page) => (
-              <div key={page.id} className="w-full bg-[var(--bg-secondary)] rounded-md shadow-md overflow-hidden border border-[var(--border-color)]" id={`page-${page.page_number}`}>
-                {page.signedImageUrl ? (
-                  <Image
-                    src={page.signedImageUrl}
-                    alt={`Page ${page.page_number}`}
-                    width={800} 
-                    height={1200}
-                    className="w-full h-auto block" 
-                    priority={page.page_number <= 3} 
-                    unoptimized 
-                  />
-                ) : (
-                  // Error placeholder for individual image - styled consistently
-                  <div className="w-full aspect-[2/3] bg-[var(--bg-tertiary)]/50 flex flex-col items-center justify-center text-red-400 p-4 border border-[var(--border-color)] rounded-md">
-                    <ImageOff className="w-16 h-16 mb-3 text-gray-500" />
-                    <p className="font-semibold text-sm text-red-300">Failed to load Page {page.page_number}</p>
-                    {page.error && <p className="text-xs text-red-500 mt-1 text-center max-w-xs">({page.error})</p>}
-                  </div>
-                )}
-              </div>
-            ))}
-             {pages.length === 0 && chapterData.total_pages > 0 && (
-                 <p className="text-yellow-400 italic">Could not load any page images for this chapter.</p>
-             )}
-             {chapterData.total_pages === 0 && (
-                 <p className="text-gray-500 italic">This chapter has no pages according to the database.</p>
-             )}
+          {/* Placeholder for the space the button will occupy in ReaderContent */}
+          <div className="w-auto min-w-[150px]"> {/* Adjust min-width as needed based on button size */} 
+             {/* The top button itself is rendered inside ReaderContent */}
           </div>
-        )}
-        
-        {/* Fixed Controls Overlay - Styled container */} 
+        </div>
+
+        {/* Render the Client Component for content and buttons */}
+        <ReaderContent
+          initialChapterData={chapterData}
+          initialPages={pages}
+          initialOverallError={overallError}
+          initialNextChapterStatus={nextChapterStatus}
+          currentChapterNumber={chapterNumber}
+        />
+
+        {/* Fixed Controls Overlay (Remains outside ReaderContent) */} 
         {pages.length > 0 && classifications && classifications.length > 0 && (
-          // Apply card-like styling to the container
           <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3 ">
-             {/* Controls themselves might need internal adjustments if their styling clashes */}
              <AudioPlayer classifications={classifications} />
              <ClassificationBubble classifications={classifications} />
              <PageCounter totalPages={pages.length} />

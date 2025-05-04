@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import usePageObserver from './usePageObserver';
 import { Settings, X } from 'lucide-react'; // Add icons
 
@@ -20,19 +20,22 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
   const [currentMood, setCurrentMood] = useState<Classification['category'] | null>(null);
   const [previousMood, setPreviousMood] = useState<Classification['category'] | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isAudioReady, setIsAudioReady] = useState(false); // Track if at least one audio element has a source and is ready
   
   // Configurable settings with defaults
-  const [fadeOutMs, setFadeOutMs] = useState<number>(800);
-  const [fadeInMs, setFadeInMs] = useState<number>(1000);
+  const [fadeOutMs, setFadeOutMs] = useState<number>(0);
+  const [fadeInMs, setFadeInMs] = useState<number>(0);
   const [targetVolume, setTargetVolume] = useState<number>(0.5);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   
   // Use two audio elements for cross-fading
   const audioRef1 = useRef<HTMLAudioElement | null>(null);
   const audioRef2 = useRef<HTMLAudioElement | null>(null);
-  const [activeAudio, setActiveAudio] = useState<1 | 2>(1);
+  const [activeAudioRef, setActiveAudioRef] = useState<React.RefObject<HTMLAudioElement | null>>(audioRef1);
+  const [inactiveAudioRef, setInactiveAudioRef] = useState<React.RefObject<HTMLAudioElement | null>>(audioRef2);
+  
+  // Ref to track if a transition is currently in progress to prevent overlaps
+  const isTransitioningRef = useRef(false);
   
   // --- Persistence --- 
   useEffect(() => {
@@ -44,7 +47,21 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     if (savedFadeOut) setFadeOutMs(parseInt(savedFadeOut, 10));
     if (savedFadeIn) setFadeInMs(parseInt(savedFadeIn, 10));
     if (savedVolume) setTargetVolume(parseFloat(savedVolume));
-  }, []);
+
+    // Initialize Audio Elements
+    audioRef1.current = new Audio();
+    audioRef2.current = new Audio();
+    audioRef1.current.preload = 'auto';
+    audioRef2.current.preload = 'auto';
+    audioRef1.current.loop = false;
+    audioRef2.current.loop = false;
+
+    return () => {
+      // Cleanup on unmount
+      cleanupAudio(audioRef1.current);
+      cleanupAudio(audioRef2.current);
+    };
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   // Save settings to localStorage when they change
   const handleSettingChange = <T extends number>(setter: React.Dispatch<React.SetStateAction<T>>, key: string, value: string) => {
@@ -55,80 +72,23 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     }
   };
 
-  // Cleanup function for audio elements
-  const cleanupAudio = (audioElement: HTMLAudioElement) => {
-    if (audioElement) {
-      audioElement.pause();
-      audioElement.currentTime = 0;
-      audioElement.src = '';
-    }
-  };
-
-  // Find mood for the current page
-  useEffect(() => {
-    const classification = classifications.find(c => c.page_number === currentPage);
-    setCurrentMood(classification ? classification.category : null);
-  }, [currentPage, classifications]);
-
-  // Fade audio in/out functions
-  const fadeOut = (audioElement: HTMLAudioElement, duration: number = fadeOutMs): Promise<void> => {
-    return new Promise((resolve) => {
-      const startVolume = audioElement.volume;
-      const fadeInterval = 20; // ms
-      const volumeStep = startVolume / (duration / fadeInterval);
-      
-      const interval = setInterval(() => {
-        if (audioElement.volume > volumeStep) {
-          audioElement.volume -= volumeStep;
-        } else {
-          audioElement.volume = 0;
-          audioElement.pause();
-          clearInterval(interval);
-          resolve();
-        }
-      }, fadeInterval);
-    });
-  };
-  
-  const fadeIn = (audioElement: HTMLAudioElement, duration: number = fadeInMs): Promise<void> => {
-    return new Promise((resolve) => {
-      const effectiveTargetVolume = Math.max(0, Math.min(1, targetVolume)); // Ensure volume is 0-1
-      audioElement.volume = 0;
-      audioElement.play().catch(console.error);
-      
-      const fadeInterval = 10; // ms
-      const volumeStep = duration > 0 ? effectiveTargetVolume / (duration / fadeInterval) : effectiveTargetVolume;
-      
-      const interval = setInterval(() => {
-        if (duration <= 0 || audioElement.volume >= effectiveTargetVolume - volumeStep) {
-          // If duration is 0 or less, or volume is close enough, jump to target
-          audioElement.volume = effectiveTargetVolume;
-          clearInterval(interval);
-          resolve();
-        } else {
-          audioElement.volume += volumeStep;
-        }
-      }, fadeInterval);
-    });
-  };
-
-  // Function to create a delay
-  const delay = (ms: number): Promise<void> => {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  };
+  // --- Audio Utility Functions --- 
 
   // Function to set a random start position in the audio track
-  const setRandomStartPosition = (audioElement: HTMLAudioElement) => {
+  const setRandomStartPosition = (audioElement: HTMLAudioElement | null) => {
+    if (!audioElement) return;
     const duration = audioElement.duration;
     if (isFinite(duration) && duration > 5) {
-      // Avoid the first 10% and last 20% of the track for a more natural feeling
-      const minPosition = duration * 0.1; // Skip the first 10%
-      const maxPosition = duration * 0.8; // Skip the last 20%
+      const minPosition = duration * 0.1; 
+      const maxPosition = duration * 0.8;
       const randomPosition = minPosition + Math.random() * (maxPosition - minPosition);
       audioElement.currentTime = randomPosition;
+      console.log(`[AudioPlayer] Set random start position: ${randomPosition.toFixed(2)}s / ${duration.toFixed(2)}s`);
+    } else {
+      audioElement.currentTime = 0;
     }
   };
-
+  
   // Get random audio file from a mood directory
   const getRandomAudioForMood = async (mood: Classification['category']): Promise<string> => {
     try {
@@ -139,188 +99,331 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
       const data = await response.json();
       return data.url;
     } catch (error) {
-      console.error("Error fetching audio URL:", error);
+      console.error("[AudioPlayer] Error fetching audio URL:", error);
       return ''; // Return empty string on error
     }
   };
-
-  // Function to load a new track for the current mood
-  const loadNewTrackForCurrentMood = async (audioElement: HTMLAudioElement, mood: Classification['category'] | null) => {
-    if (!mood) return;
-    
-    try {
-      const audioPath = await getRandomAudioForMood(mood);
-      console.log(`[AudioPlayer] Loading new track for mood "${mood}": ${audioPath}`);
-      audioElement.src = audioPath;
-      
-      audioElement.addEventListener('loadedmetadata', function handleMetadata() {
-        setRandomStartPosition(audioElement);
-        audioElement.volume = 0.5;
-        audioElement.volume = targetVolume; // Use state variable
-        audioElement.play().catch(console.error);
-        audioElement.removeEventListener('loadedmetadata', handleMetadata);
-      }, { once: true });
-    } catch (error) {
-      console.error("Error loading new track:", error);
-    }
-  };
-
-  // Change audio when mood changes with cross-fade
-  useEffect(() => {
-    if (currentMood && currentMood !== previousMood) {
-      console.log(`[AudioPlayer] Page ${currentPage} - Mood changed from "${previousMood}" to "${currentMood}"`);
-      const currentAudio = activeAudio === 1 ? audioRef1.current : audioRef2.current;
-      const nextAudio = activeAudio === 1 ? audioRef2.current : audioRef1.current;
-      
-      if (currentAudio && nextAudio) {
-        // Clean up only the next audio element before loading new source
-        cleanupAudio(nextAudio);
-
-        // Set up metadata loaded event to start from a random position
-        const handleMetadataLoaded = async () => {
-          try {
-            // Set a random position in the track
-            setRandomStartPosition(nextAudio);
-
-            // If previous audio is playing, perform a cross-fade
-            if (isPlaying && currentAudio.currentTime > 0 && currentAudio.volume > 0) {
-              // Start fading out the current audio and fading in the new one concurrently
-              // Start fade out
-              const fadeOutPromise = fadeOut(currentAudio, fadeOutMs); // Use state
-              // Start fade in (starts playing at volume 0)
-              const fadeInPromise = fadeIn(nextAudio, fadeInMs); // Use state
-
-              // Wait for both fades to complete
-              await Promise.all([fadeOutPromise, fadeInPromise]);
-
-              // Ensure the old audio element is fully cleaned up after fade-out
-              cleanupAudio(currentAudio); 
-
-            } else {
-              // If not previously playing, just fade in the new track
-              nextAudio.volume = 0; // Start at 0 before fadeIn
-              await fadeIn(nextAudio, fadeInMs) // Use state
-                .catch(err => {
-                  console.error("Failed to play audio:", err);
-                  setIsPlaying(false);
-                });
-            }
-            
-            // Update states after successful transition/play
-            setActiveAudio(prevActive => prevActive === 1 ? 2 : 1); 
-            setIsPlaying(true);
-            setPreviousMood(currentMood);
-
-          } catch (error) {
-             console.error("Error during audio transition:", error);
-             setIsPlaying(false); // Ensure isPlaying is false on error
-          } finally {
-             // Clean up the event listener regardless of success/failure
-            nextAudio.removeEventListener('loadedmetadata', handleMetadataLoaded);
-          }
-        };
-
-        // Get audio URL and set it on the next audio element
-        (async () => {
-          try {
-            const audioPath = await getRandomAudioForMood(currentMood);
-            console.log(`[AudioPlayer] Loading new track for mood "${currentMood}": ${audioPath}`);
-            
-            // Set up the next audio
-            nextAudio.src = audioPath;
-            nextAudio.loop = false;
-            
-            // Add the event listener for metadata loading
-            nextAudio.addEventListener('loadedmetadata', handleMetadataLoaded);
-          } catch (error) {
-            console.error("Error fetching audio:", error);
-          }
-        })();
+  
+  // Cleanup function for audio elements - Use useCallback
+  const cleanupAudio = useCallback((audioElement: HTMLAudioElement | null) => {
+    if (audioElement) {
+      console.log(`[AudioPlayer] Cleaning up audio element... Paused: ${audioElement.paused}, Src: ${audioElement.src}`);
+      audioElement.pause();
+      if (audioElement.src && audioElement.src !== window.location.href) {
+         // Revoke object URL if necessary, or simply reset src
+         // In this case, we assume URLs don't need revoking, just resetting.
+         audioElement.src = ''; 
       }
+      audioElement.removeAttribute('src'); // Ensure src attribute is removed
+      audioElement.load(); // Abort current network request and reset
+      audioElement.currentTime = 0;
+      audioElement.volume = targetVolume; // Reset volume
+      // Remove potentially attached listeners
+      audioElement.removeEventListener('loadedmetadata', handleMetadataLoaded); // Use named function reference
+      audioElement.removeEventListener('ended', handleTrackEnd); // Use named function reference
+      audioElement.removeEventListener('error', handleAudioError);
     }
-  }, [currentMood, previousMood]); // Removed activeAudio and isPlaying from dependencies
+  }, [targetVolume]); // Include targetVolume if needed
 
-  // --- Live Volume Control ---
-  useEffect(() => {
-    const currentAudio = activeAudio === 1 ? audioRef1.current : audioRef2.current;
-    if (currentAudio && isPlaying) { // Only adjust if playing
-      // Apply volume clamping just in case
-      const effectiveVolume = Math.max(0, Math.min(1, targetVolume));
-      currentAudio.volume = effectiveVolume;
-    }
-    // No need to add isPlaying or activeAudio as dependencies, 
-    // we only want this effect to run when targetVolume itself changes.
-  }, [targetVolume]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (transitionTimeoutRef.current) {
-        clearTimeout(transitionTimeoutRef.current);
+  // Fade audio in/out functions - Use useCallback
+  const fadeOut = useCallback((audioElement: HTMLAudioElement | null, duration: number = fadeOutMs): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!audioElement || audioElement.volume === 0 || duration <= 0) {
+        if (audioElement) audioElement.pause();
+        resolve();
+        return;
       }
-      cleanupAudio(audioRef1.current!);
-      cleanupAudio(audioRef2.current!);
-    };
+      
+      const startVolume = audioElement.volume;
+      const fadeInterval = 20; // ms
+      const steps = duration / fadeInterval;
+      const volumeStep = startVolume / steps;
+      let currentStep = 0;
+
+      const interval = setInterval(() => {
+        currentStep++;
+        const newVolume = Math.max(0, startVolume - volumeStep * currentStep);
+        audioElement.volume = newVolume;
+
+        if (newVolume <= 0 || currentStep >= steps) {
+          audioElement.volume = 0;
+          audioElement.pause();
+          clearInterval(interval);
+          resolve();
+        }
+      }, fadeInterval);
+    });
+  }, [fadeOutMs]);
+  
+  const fadeIn = useCallback((audioElement: HTMLAudioElement | null, duration: number = fadeInMs): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (!audioElement || !audioElement.src) {
+        reject(new Error("Audio element or source not available for fade in."));
+        return;
+      }
+
+      const effectiveTargetVolume = Math.max(0, Math.min(1, targetVolume));
+      audioElement.volume = 0;
+      
+      // Attempt to play, handle potential interruptions
+      audioElement.play().then(() => {
+        if (duration <= 0 || effectiveTargetVolume === 0) {
+          audioElement.volume = effectiveTargetVolume;
+          resolve();
+          return;
+        }
+        
+        const fadeInterval = 20; // ms
+        const steps = duration / fadeInterval;
+        const volumeStep = effectiveTargetVolume / steps;
+        let currentStep = 0;
+
+        const interval = setInterval(() => {
+          currentStep++;
+          const newVolume = Math.min(effectiveTargetVolume, volumeStep * currentStep);
+          audioElement.volume = newVolume;
+
+          if (newVolume >= effectiveTargetVolume || currentStep >= steps) {
+            audioElement.volume = effectiveTargetVolume; // Ensure target is reached
+            clearInterval(interval);
+            resolve();
+          }
+        }, fadeInterval);
+      }).catch(error => {
+        console.error("[AudioPlayer] Fade-in play() error:", error);
+        // Don't automatically reject, maybe the source changed again. Allow cleanup.
+        // reject(error);
+        resolve(); // Resolve anyway to let the flow continue, error is logged.
+      });
+    });
+  }, [fadeInMs, targetVolume]);
+  
+  // --- Event Handlers --- 
+
+  // Define handlers using useCallback to maintain stable references
+  const handleMetadataLoaded = useCallback(() => {
+    // This function is now primarily for debugging or specific actions *after* metadata loads,
+    // but before the main effect decides to fade in.
+    // setRandomStartPosition might be called here or within the main effect.
+    console.log("[AudioPlayer] Metadata loaded.");
   }, []);
 
-  // Handle track ending - play a new track from the same mood
+  const handleTrackEnd = useCallback(() => {
+    console.log("[AudioPlayer] Track ended.");
+    setIsPlaying(false); // Mark as not playing
+    // Cleanup will be handled by the main effect if mood remains the same or changes.
+  }, []);
+  
+  const handleAudioError = useCallback((event: Event) => {
+    const audioElement = event.target as HTMLAudioElement;
+    console.error("[AudioPlayer] Audio Error:", audioElement.error);
+    setIsPlaying(false);
+    cleanupAudio(audioElement);
+    // Maybe attempt to load a different track? Or just stop.
+  }, [cleanupAudio]);
+
+  // --- Core Logic Effect --- 
+
+  // Find mood for the current page
   useEffect(() => {
-    const audio1 = audioRef1.current;
-    const audio2 = audioRef2.current;
+    const classification = classifications.find(c => c.page_number === currentPage);
+    const newMood = classification ? classification.category : null;
+    if (newMood !== currentMood) {
+        setPreviousMood(currentMood); // Store the outgoing mood
+        setCurrentMood(newMood);
+        console.log(`[AudioPlayer] Page ${currentPage} - Mood should change from "${currentMood}" to "${newMood}"`);
+    }
+  }, [currentPage, classifications, currentMood]); // Added currentMood dependency
+
+  // Main effect to handle mood changes and track ending
+  useEffect(() => {
+    const activeAudio = activeAudioRef.current;
+    const inactiveAudio = inactiveAudioRef.current;
     
-    const handleTrackEnd = (audioElement: HTMLAudioElement) => {
-      if (currentMood && isPlaying) {
-        loadNewTrackForCurrentMood(audioElement, currentMood);
+    if (!activeAudio || !inactiveAudio || isTransitioningRef.current) {
+        return; // Exit if audio elements not ready or transition in progress
+    }
+
+    const shouldChangeTrack = currentMood !== previousMood;
+    const activeTrackEnded = activeAudio.ended || activeAudio.paused && activeAudio.currentTime === 0 && isPlaying; // Consider ended or paused at start as 'ended'
+
+    if (!currentMood) {
+        // If there's no current mood, fade out and clean up everything
+        if (isPlaying) {
+            console.log("[AudioPlayer] No mood, fading out active audio.");
+            isTransitioningRef.current = true;
+            fadeOut(activeAudio, fadeOutMs).finally(() => {
+                cleanupAudio(activeAudio);
+                cleanupAudio(inactiveAudio); // Ensure both are clean
+                setIsPlaying(false);
+                setPreviousMood(null);
+                setIsAudioReady(false);
+                isTransitioningRef.current = false;
+            });
+        } else {
+          // Ensure cleanup even if not playing
+          cleanupAudio(activeAudio);
+          cleanupAudio(inactiveAudio);
+          setPreviousMood(null);
+          setIsAudioReady(false);
+        }
+        return;
+    }
+
+    // Decision logic: Change track if mood changed OR if active track ended and mood is the same
+    if (shouldChangeTrack || (activeTrackEnded && !shouldChangeTrack)) {
+        console.log(`[AudioPlayer] Action Triggered: Mood Change? ${shouldChangeTrack}, Track Ended? ${activeTrackEnded}`);
+        
+        if (isTransitioningRef.current) {
+            console.log("[AudioPlayer] Transition already in progress, skipping new action.");
+            return;
+        }
+        isTransitioningRef.current = true;
+
+        // Prepare the inactive audio element for the new track
+        cleanupAudio(inactiveAudio);
+        
+        // Get the audio URL for the *current* mood
+        getRandomAudioForMood(currentMood).then(audioPath => {
+            if (!audioPath) {
+                console.error("[AudioPlayer] No audio path received, stopping transition.");
+                isTransitioningRef.current = false;
+                return; // Stop if we couldn't get a URL
+            }
+            
+            console.log(`[AudioPlayer] Loading into inactive element: ${audioPath}`);
+            inactiveAudio.src = audioPath;
+            inactiveAudio.preload = 'auto'; // Ensure preload is set
+            inactiveAudio.loop = false;
+            
+            // Attach listeners TO THE INACTIVE ELEMENT which will become active
+            const metadataHandler = () => {
+                console.log("[AudioPlayer] New track metadata loaded.");
+                setRandomStartPosition(inactiveAudio);
+                // Now ready to perform the fade/cross-fade
+
+                const fadeOutPromise = isPlaying ? fadeOut(activeAudio, fadeOutMs) : Promise.resolve();
+                
+                fadeOutPromise.then(() => {
+                    cleanupAudio(activeAudio); // Clean up old active one AFTER fade out
+                    console.log("[AudioPlayer] Fading in new track.");
+                    return fadeIn(inactiveAudio, fadeInMs);
+                }).then(() => {
+                    console.log("[AudioPlayer] Transition complete.");
+                    // Switch roles
+                    setActiveAudioRef(inactiveAudioRef);
+                    setInactiveAudioRef(activeAudioRef);
+                    setIsPlaying(true); // Mark as playing
+                    setPreviousMood(currentMood); // Update previous mood *after* successful transition
+                    setIsAudioReady(true);
+                }).catch(error => {
+                    console.error("[AudioPlayer] Error during fade transition:", error);
+                    cleanupAudio(inactiveAudio); // Clean up the element that failed
+                    setIsPlaying(false);
+                    setIsAudioReady(false);
+                }).finally(() => {
+                    isTransitioningRef.current = false; // Release the lock
+                    // Remove listeners after use
+                    inactiveAudio.removeEventListener('loadedmetadata', metadataHandler); 
+                    inactiveAudio.removeEventListener('ended', endHandler);
+                    inactiveAudio.removeEventListener('error', errorHandler);
+                });
+            };
+
+            const endHandler = () => {
+              console.log("[AudioPlayer] New track ended unexpectedly during load/transition?");
+              handleTrackEnd(); // Call the generic end handler
+            };
+            
+            const errorHandler = (e: Event) => {
+              console.error("[AudioPlayer] Error loading new track.");
+              handleAudioError(e); // Call the generic error handler
+              // Clean up listeners immediately on error
+              inactiveAudio.removeEventListener('loadedmetadata', metadataHandler); 
+              inactiveAudio.removeEventListener('ended', endHandler);
+              inactiveAudio.removeEventListener('error', errorHandler);
+              isTransitioningRef.current = false; // Release lock on error
+            };
+            
+            inactiveAudio.addEventListener('loadedmetadata', metadataHandler, { once: true });
+            inactiveAudio.addEventListener('ended', endHandler, { once: true });
+            inactiveAudio.addEventListener('error', errorHandler, { once: true });
+
+            // Explicitly load the source
+            inactiveAudio.load(); 
+            console.log("[AudioPlayer] Initiated load for inactive element.");
+
+        }).catch(error => {
+             console.error("[AudioPlayer] Failed to get random audio URL:", error);
+             isTransitioningRef.current = false; // Release lock if fetch fails
+        });
+    }
+    
+  }, [currentMood, previousMood, isPlaying, activeAudioRef, inactiveAudioRef, fadeOutMs, fadeInMs, cleanupAudio, fadeOut, fadeIn, handleTrackEnd, handleAudioError]); // Dependencies
+
+  // --- Live Volume Control --- 
+  useEffect(() => {
+    const activeAudio = activeAudioRef.current;
+    if (activeAudio && isPlaying) {
+      const effectiveVolume = Math.max(0, Math.min(1, targetVolume));
+      if (activeAudio.volume !== effectiveVolume) {
+          // console.log(`[AudioPlayer] Setting live volume: ${effectiveVolume}`);
+          activeAudio.volume = effectiveVolume;
       }
-    };
-    
-    if (audio1) {
-      audio1.addEventListener('ended', () => handleTrackEnd(audio1));
     }
-    
-    if (audio2) {
-      audio2.addEventListener('ended', () => handleTrackEnd(audio2));
-    }
-    
-    return () => {
-      audio1?.removeEventListener('ended', () => handleTrackEnd(audio1));
-      audio2?.removeEventListener('ended', () => handleTrackEnd(audio2));
-    };
-  }, [currentMood, isPlaying]);
+  }, [targetVolume, isPlaying, activeAudioRef]);
+
+  // --- UI Interaction --- 
 
   const togglePlayPause = () => {
-    const audio1 = audioRef1.current;
-    const audio2 = audioRef2.current;
-    
+    const activeAudio = activeAudioRef.current;
+    const inactiveAudio = inactiveAudioRef.current;
+
     if (isPlaying) {
-      // Pause both audio elements
-      if (audio1) audio1.pause();
-      if (audio2) audio2.pause();
+      console.log("[AudioPlayer] Pausing via UI.");
+      if (activeAudio) activeAudio.pause();
+      // We might not want to pause the inactive one if it's preloading
+      // if (inactiveAudio) inactiveAudio.pause(); 
+      setIsPlaying(false);
     } else {
-      // Play the active audio
-      const currentAudio = activeAudio === 1 ? audio1 : audio2;
-      if (currentAudio) {
-        currentAudio.play().catch(console.error);
+      // Only play if a mood is set and audio is ready/has source
+      if (currentMood && activeAudio && activeAudio.src) {
+        console.log("[AudioPlayer] Playing via UI.");
+        activeAudio.play().then(() => setIsPlaying(true)).catch(err => {
+            console.error("[AudioPlayer] UI Play error:", err);
+            setIsPlaying(false);
+            // Maybe try loading a new track if play fails?
+            handleTrackEnd(); // Treat play error like track end to potentially reload
+        });
+      } else {
+        console.log("[AudioPlayer] Cannot play - no current mood or audio not ready.");
+        // If no mood, maybe trigger the main effect to load something?
+        // Or try to reload the current track if src exists?
+        if (currentMood && activeAudio && !activeAudio.src) {
+           // Trigger main effect to load track for current mood
+           setPreviousMood(null); // Force reload by making current != previous
+        }
       }
     }
-    
-    setIsPlaying(!isPlaying);
   };
   
-  if (!currentMood) return null;
+  if (!classifications || classifications.length === 0) return null; // Don't render if no classifications
   
   return (
     <div className="fixed top-4 right-4 z-50 flex flex-col items-end gap-2">
-      {/* Player UI */} 
-      <div className="bg-black/70 text-white px-3 py-1.5 rounded-full shadow-lg flex items-center gap-3">
-          <button
-            onClick={togglePlayPause}
-            className="w-6 h-6 flex items-center justify-center text-lg"
-            aria-label={isPlaying ? "Pause music" : "Play music"}
-          >
-            {isPlaying ? '⏸️' : '▶️'}
-          </button>
-      </div>
+      {/* Player UI (Only show if a mood could potentially play) */}
+      {isAudioReady || currentMood ? ( // Show controls if audio is ready OR a mood is selected
+        <div className="bg-black/70 text-white px-3 py-1.5 rounded-full shadow-lg flex items-center gap-3">
+            <button
+              onClick={togglePlayPause}
+              disabled={!currentMood && !isAudioReady} // Disable if no mood AND no audio ready
+              className="w-6 h-6 flex items-center justify-center text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label={isPlaying ? "Pause music" : "Play music"}
+            >
+              {isPlaying ? '⏸️' : '▶️'}
+            </button>
+        </div>
+      ) : null}
 
       {/* Settings Toggle Button */} 
       <button
@@ -383,15 +486,7 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
         </div>
       )}
 
-      {/* Hidden Audio Elements */}
-      <audio
-        ref={audioRef1}
-        style={{ display: 'none' }}
-      />
-      <audio
-        ref={audioRef2}
-        style={{ display: 'none' }}
-      />
+      {/* Hidden Audio Elements are created in useEffect */}
     </div>
   );
 }
