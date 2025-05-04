@@ -8,7 +8,7 @@ export default function Navbar() {
           Home
         </Link>
         <Link href="/manga-classifier" className="text-white no-underline hover:text-gray-300 transition-colors">
-          Manga Classifier
+          Add New Chapter
         </Link>
       </div>
     </nav>

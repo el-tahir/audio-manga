@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import ChapterCard from '@/components/ChapterCard';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp } from 'lucide-react';
 
 interface Chapter {
   id: number;
@@ -17,13 +18,20 @@ export default function HomePage() {
   const [chapters, setChapters] = useState<Chapter[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<'chapter_number' | 'processed_at'>('chapter_number');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  useEffect(() => {
+    document.title = "Detective Conan - Chapter Overview";
+  }, []);
 
   useEffect(() => {
     async function fetchChapters() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch('/api/chapters?sortBy=chapter_number&order=asc');
+        const apiUrl = `/api/chapters?sortBy=${sortBy}&order=${sortOrder}`;
+        const res = await fetch(apiUrl);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.error || `Failed to fetch chapters (Status: ${res.status})`);
@@ -40,13 +48,46 @@ export default function HomePage() {
     }
 
     fetchChapters();
-  }, []);
+  }, [sortBy, sortOrder]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--foreground)]">
       <Navbar />
       <main className="container mx-auto p-4 md:p-6 lg:p-8 max-w-6xl">
-        <h1 className="text-3xl md:text-4xl font-bold mb-8 text-center text-white">Manga Chapters</h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">Detective Conan OST Manga Reader</h1>
+        <p className="text-center text-gray-400 mb-8 text-base">
+          Browse processed chapters of Detective Conan. Use the classifier to add more.
+        </p>
+
+        <div className="max-w-3xl mx-auto mb-10 p-4 bg-[var(--bg-secondary)]/50 border border-[var(--border-color)] rounded-lg shadow">
+          <p className="text-center text-gray-300 text-sm md:text-base leading-relaxed">
+            One of the coolest things about the Detective Conan anime is the OST. Let's bring that to the manga! This project is a manga reader for <strong className="text-white">Detective Conan</strong> that automatically plays an appropriate OST track based on the page currently being read. You can add new chapters in the <Link href="/manga-classifier"><span className="text-blue-400 hover:text-blue-300 underline cursor-pointer">Add New Chapter</span></Link> page. The initial classifiation will not always be correct, but you can edit the mood of each page in the View Moods page of the chapter. 
+          </p>
+        </div>
+        
+        {!loading && chapters && chapters.length > 0 && (
+          <div className="flex justify-end items-center gap-4 mb-6">
+            <span className="text-sm text-gray-400 flex items-center gap-1">
+              <ArrowDownUp size={16} /> Sort by:
+            </span>
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="chapter_number">Chapter Number</option>
+              <option value="processed_at">Date Processed</option>
+            </select>
+            <select 
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          </div>
+        )}
         
         {loading && (
           <ChapterGridSkeleton />
@@ -60,9 +101,16 @@ export default function HomePage() {
         )}
 
         {!loading && !error && chapters && chapters.length === 0 && (
-          <div className="text-center py-10 px-4 rounded-md bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-            <p className="text-lg text-gray-400">No chapters available.</p>
-            <p className="text-sm text-gray-500 mt-1">Use the Manga Classifier page to download and process chapters.</p>
+          <div className="text-center py-12 px-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-md">
+            <h2 className="text-xl font-semibold text-gray-300 mb-3">No Chapters Found</h2>
+            <p className="text-gray-400 mb-6">
+              It looks like no chapters have been processed yet. Head over to the classifier to get started!
+            </p>
+            <Link href="/manga-classifier">
+              <span className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-md shadow-sm transition-colors duration-150 cursor-pointer">
+                Go to Classifier
+              </span>
+            </Link>
           </div>
         )}
 

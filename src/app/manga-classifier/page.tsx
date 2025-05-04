@@ -47,6 +47,11 @@ export default function MangaClassifier() {
 
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // --- Set Page Title ---
+  useEffect(() => {
+    document.title = "Manga Classifier - Detective Conan";
+  }, []);
+
   // --- Data Fetching & Polling ---
   const fetchChapters = async (isInitialLoad = false) => {
     if (isInitialLoad) {
@@ -228,24 +233,27 @@ export default function MangaClassifier() {
     <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--foreground)]">
       <Navbar />
       <main className="container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
-        <h1 className="text-3xl md:text-4xl font-bold mb-8 text-center text-white">Manga Classifier</h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">Add New Chapter</h1>
+        <p className="text-center text-gray-400 mb-8 text-base">
+          View the status of processed Detective Conan chapters or submit a new chapter for processing.
+        </p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
 
           {/* Chapters List Card */} 
           <div className="bg-[var(--bg-secondary)] rounded-lg shadow-lg p-5 md:p-6">
-            <h2 className="text-xl font-semibold mb-4 border-b border-[var(--border-color)] pb-2 text-white">Chapters in Database</h2>
+            <h2 className="text-xl font-semibold mb-4 border-b border-[var(--border-color)] pb-2 text-white">Chapter Status Overview</h2>
             {loadingStoredChapters ? (
               <ChapterListSkeleton /> // Use Skeleton Loader
             ) : error && storedChapters.length === 0 ? (
                // Show error prominently if list fails AND is empty
-              <div className="flex items-center gap-2 p-4 bg-red-900/30 border border-red-700 rounded text-red-300">
-                <AlertTriangle size={20} /> {error}
-              </div>
+                <div className="flex items-center gap-2 p-4 bg-red-900/30 border border-red-700 rounded text-red-300">
+                  <AlertTriangle size={20} /> {error}
+                </div>
             ) : (
               <div className="max-h-96 overflow-y-auto pr-2"> {/* Scrollable List */} 
                 {storedChapters.length === 0 ? (
-                   <p className="text-gray-500 italic text-center py-4">No chapters found.</p>
+                   <p className="text-gray-500 italic text-center py-4">No chapters processed yet. Add one below!</p>
                 ) : (
                    <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 bg-[var(--bg-secondary)] z-10">
@@ -279,7 +287,7 @@ export default function MangaClassifier() {
 
           {/* Download Form Card */} 
           <div className="bg-[var(--bg-secondary)] rounded-lg shadow-lg p-5 md:p-6">
-            <h2 className="text-xl font-semibold mb-4 text-white">Download New Chapter</h2>
+            <h2 className="text-xl font-semibold mb-4 text-white">Add & Classify Chapter</h2>
             <p className="text-sm text-gray-400 mb-5">
               Enter a Detective Conan chapter number to download and classify its pages.
             </p>
@@ -296,11 +304,11 @@ export default function MangaClassifier() {
                   className={`w-full px-3 py-2 bg-[var(--bg-tertiary)] border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${ 
                     inputStatus.type === 'error' ? 'border-red-500' : 
                     inputStatus.type === 'warning' ? 'border-yellow-500' : 
-                    inputStatus.type === 'success' ? 'border-green-500' : 'border-[var(--border-color)]' 
+                    inputStatus.type === 'success' ? 'border-green-500' : 'border-[var(--border-color)] focus:border-blue-400' 
                   }`}
                 />
                 {/* Input Status Message Area */} 
-                <div className="flex items-center gap-2 mt-1.5 min-h-[20px] text-xs">
+                <div className="flex items-center gap-2 mt-1.5 min-h-[20px] text-xs" aria-live="polite">
                   {getInputStatusIcon(inputStatus.type)}
                   <span className={
                     inputStatus.type === 'error' ? 'text-red-400' : 
@@ -333,7 +341,7 @@ export default function MangaClassifier() {
 
         {/* Global Feedback Area */} 
         <div className="mt-8 space-y-4">
-          {error && storedChapters.length > 0 && ( // Only show global fetch error if list is loaded
+          {error && !loadingStoredChapters && ( // Show global fetch error if loading finished and error exists
             <GlobalFeedback type="error" message={error} />
           )}
           {processingMessage && (
@@ -373,7 +381,7 @@ const GlobalFeedback = ({ type, message }: { type: 'error' | 'success', message:
   const Icon = type === 'error' ? AlertTriangle : CheckCircle2;
   
   return (
-    <div className={`${baseClasses} ${typeClasses}`}>
+    <div className={`${baseClasses} ${typeClasses}`} aria-live="polite">
       <Icon size={18} />
       <span>{message}</span>
     </div>
