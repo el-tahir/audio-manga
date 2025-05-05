@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getStorageClient } from '@/utils/gcsUtils';
 import { supabase } from '@/lib/supabase';
+import { getSignedUrlForPage } from '@/lib/gcsService';
 
 export async function GET(
   request: Request,
@@ -14,33 +14,28 @@ export async function GET(
   }
 
   try {
-    // Fetch chapter_number from DB
+    // Optional: Still check if chapter exists in DB if needed
     const { data: chapter, error: chapError } = await supabase
       .from('manga_chapters')
       .select('chapter_number')
       .eq('chapter_number', chapterNum)
-      .single();
-    if (chapError || !chapter) {
-      return NextResponse.json({ error: 'Chapter not found' }, { status: 404 });
+      .maybeSingle(); // Use maybeSingle or check existence as needed
+
+    if (chapError) {
+      console.error('[API Image GET] DB Error:', chapError);
+      // Decide if DB error should prevent URL generation
+      // return NextResponse.json({ error: 'Database error checking chapter' }, { status: 500 });
+    }
+    if (!chapter && !chapError) { // Only fail if definitively not found (and no DB error)
+         return NextResponse.json({ error: 'Chapter not found in DB' }, { status: 404 });
     }
 
-    const chapterNumVal = chapter.chapter_number;
-    const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME!;
-    // Initialize GCS client
-    const storage = getStorageClient();
-    const gcsObjectPath = `chapters/${chapterNumVal}/${pageNum}.jpg`;
-    const file = storage.bucket(bucketName).file(gcsObjectPath);
-
-    // Generate signed URL
-    const [signedUrl] = await file.getSignedUrl({
-      version: 'v4',
-      action: 'read',
-      expires: Date.now() + 15 * 60 * 1000 // 15 minutes
-    });
+    // *** Call the utility function ***
+    const signedUrl = await getSignedUrlForPage(chapterNum, pageNum);
 
     return NextResponse.json({ url: signedUrl });
   } catch (err) {
-    console.error('[API /api/chapters/[chapterNumber]/images/[pageNumber] GET] Error:', err);
+    console.error('[API /api/chapters/.../images/... GET] Error:', err);
     // Return the actual error message for debugging
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

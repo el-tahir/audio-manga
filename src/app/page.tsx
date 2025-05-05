@@ -62,9 +62,6 @@ export default function HomePage() {
       <Navbar />
       <main className="container mx-auto p-4 md:p-6 lg:p-8 max-w-6xl">
         <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">Detective Conan OST Manga Reader</h1>
-        <p className="text-center text-gray-400 mb-8 text-base">
-          Browse processed chapters of Detective Conan. Use the classifier to add more.
-        </p>
 
         <div className="max-w-3xl mx-auto mb-10 p-4 bg-[var(--bg-secondary)]/50 border border-[var(--border-color)] rounded-lg shadow">
           <p className="text-center text-gray-300 text-sm md:text-base leading-relaxed">

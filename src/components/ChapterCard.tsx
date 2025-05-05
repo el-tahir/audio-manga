@@ -37,7 +37,7 @@ export default function ChapterCard({ chapterNumber, totalPages, processedAt, st
         <h3 className="text-lg font-semibold mb-2 text-white">Chapter {chapterNumber}</h3>
         <p className="text-sm text-gray-400 mb-1">{totalPages > 0 ? `${totalPages} pages` : 'No pages'}</p>
         <p className="text-sm text-gray-400 mb-1">Processed: {formattedDate}</p>
-        <p className="text-sm mb-3">
+        <p className="text-sm text-gray-400">
           Status: <span className={`font-medium ${getStatusClasses(status)}`}>{status}</span>
         </p>
       </div>

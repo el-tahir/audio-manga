@@ -270,7 +270,7 @@ export default function MangaClassifier() {
                               onClick={() => setChapterNumberInput(String(chap.chapter_number))}
                               title={`Click to load chapter ${chap.chapter_number}`}
                            >
-                             <td className="py-2.5 px-3 text-sm">{chap.chapter_number}</td>
+                             <td className="py-2.5 px-3 text-sm text-gray-300">{chap.chapter_number}</td>
                              <td className="py-2.5 px-3 text-sm">{renderStatus(chap)}</td>
                            </tr>
                          ))}

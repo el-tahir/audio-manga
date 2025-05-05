@@ -1,71 +1,66 @@
-# Stage 1: Base image with Node.js and system dependencies (including unrar)
-FROM node:18-slim AS base
+# Stage 1: Install dependencies
+FROM node:20-slim AS deps
+# Use slim variant for smaller base, check compatibility if issues arise
 
-# Set working directory
 WORKDIR /app
 
-# Install unrar (essential for your .cbr processing)
-# Combine steps to reduce layers
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends unrar && \
-    # Clean up APT cache to reduce image size
-    rm -rf /var/lib/apt/lists/*
-
-# Stage 2: Install production Node.js dependencies
-FROM base AS deps
-WORKDIR /app
-
-# Copy package.json and lock file
+# Copy package manager files
 COPY package.json package-lock.json* ./
 
-# Install production dependencies using npm ci for consistency
-# Use --omit=dev if not using npm ci, or if you need devDeps in the build stage below
-RUN npm ci --omit=dev --prefer-offline --no-audit
+# Install dependencies using npm ci for deterministic installs
+RUN npm ci
 
-# Stage 3: Build the Next.js application
-FROM base AS builder
+# Stage 2: Build the application
+FROM node:20-slim AS builder
 WORKDIR /app
 
-# Copy dependencies from the previous stage
+# Copy dependencies from the 'deps' stage
 COPY --from=deps /app/node_modules ./node_modules
-
 # Copy the rest of the application code
 COPY . .
 
-# Set build-time environment variables if needed (e.g., NEXT_PUBLIC_*)
-# ARG NEXT_PUBLIC_SOME_VAR
-# ENV NEXT_PUBLIC_SOME_VAR=$NEXT_PUBLIC_SOME_VAR
+# --- Environment Variables for Build Time ---
+# Set NEXT_PUBLIC variables needed during the build.
+# You might need to pass these as build arguments for flexibility.
+# Example:
+# ARG NEXT_PUBLIC_SUPABASE_URL
+# ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+# ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+# ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+# --- End Environment Variables for Build Time ---
 
-# Build the Next.js application using the standalone output mode
+# Build the Next.js application
+# Ensure NEXT_PUBLIC_ variables required by client-side code are available here
 RUN npm run build
 
-# Stage 4: Production image
-# Use the base image again to keep it small and include unrar
-FROM base AS runner
+# Stage 3: Production Runner
+FROM node:20-alpine AS runner
+# Use Alpine for the final, smallest image. Requires testing for native dependencies.
+
 WORKDIR /app
 
 # Set environment to production
-ENV NODE_ENV production
+ENV NODE_ENV=production
+# Prevent Next.js telemetry
+ENV NEXT_TELEMETRY_DISABLED 1
 
-# Create a non-root user and group for security
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-# USER nextjs # Switch user later after copying files owned by root
+# Install OS-level dependencies (like unrar if needed for background processing)
+# IMPORTANT: Only include this if the background processor *needs* to run in this container AND processes .cbr files.
+# If background processing is handled elsewhere, remove this RUN command.
 
-# Copy built assets from the builder stage
-# Important: Copy the standalone output and public/static folders
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy the standalone output from the builder stage
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
-# Switch to the non-root user
-USER nextjs
+# Set user to non-root (good practice)
+USER node
 
-# Expose the port the app runs on (default for Next.js is 3000)
 EXPOSE 3000
 
-# Set the port environment variable (used by Cloud Run)
-ENV PORT 3000
-
-# Command to run the application using the Node.js server from standalone output
+# Expose the port the app runs on
+ENV PORT=3000
+# Set HOST env variable instead of using the -H flag
+ENV HOST=0.0.0.0
+# The standalone server should pick up HOST=0.0.0.0
 CMD ["node", "server.js"]

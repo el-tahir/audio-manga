@@ -4,12 +4,12 @@ import Link from 'next/link';
 import PageCounter from './PageCounter';
 import ClassificationBubble from './ClassificationBubble';
 import AudioPlayer from './AudioPlayer';
-import { headers } from 'next/headers';
 import {
   AlertTriangle, 
   ArrowLeft,
 } from 'lucide-react';
 import ReaderContent from './ReaderContent';
+import { getSignedUrlForPage } from '@/lib/gcsService';
 
 interface PageParams {
   params: {
@@ -110,37 +110,26 @@ export default async function ChapterReaderPage({ params }: PageParams) {
       classifications = classificationData as ClassificationData[]; // Cast to defined type
     }
 
-    // Build pages list by fetching signed URLs
+    // Build pages list by calling the utility function directly
     const totalPages = chapterData.total_pages ?? 0;
     if (totalPages > 0) {
-      // Determine base URL for signed URLs API calls
-      const hdrs = await headers();
-      const host = hdrs.get('host')!;
-      const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-      const baseUrl = `${protocol}://${host}`;
+      console.log(`[Reader SSR] Getting signed URLs directly for ${totalPages} pages...`);
 
-      // Fetch all signed URLs in parallel for potentially faster loading
       const urlPromises = Array.from({ length: totalPages }, (_, i) => i + 1)
         .map(async (pageNumber) => {
           try {
-            const res = await fetch(`${baseUrl}/api/chapters/${chapterNumber}/images/${pageNumber}`);
-            // Check for specific GCS errors if possible, otherwise just res.ok
-            if (!res.ok) {
-                const errorBody = await res.json().catch(() => ({})); // Try to get error details
-                throw new Error(`API Error (${res.status}): ${errorBody?.error || 'Failed to fetch URL'} for page ${pageNumber}`);
-            }
-            const { url } = await res.json();
-            if (!url) {
-                throw new Error(`Empty URL returned for page ${pageNumber}`);
-            }
-            return { id: pageNumber, page_number: pageNumber, signedImageUrl: url };
+            // *** Call the utility function directly ***
+            const signedUrl = await getSignedUrlForPage(chapterNumber, pageNumber);
+            return { id: pageNumber, page_number: pageNumber, signedImageUrl: signedUrl };
           } catch (err) {
-            console.error(`Failed to get signed URL for page ${pageNumber}:`, err);
+            // Log error from the utility function
+            console.error(`[Reader SSR] ${err}`); // Error message already formatted in utility
             return { id: pageNumber, page_number: pageNumber, signedImageUrl: '', error: (err as Error).message };
           }
         });
-      
+
       pages = await Promise.all(urlPromises);
+      console.log(`[Reader SSR] Finished getting signed URLs.`);
     } else {
        console.warn(`Chapter ${chapterNumber} has 0 total_pages.`);
     }
