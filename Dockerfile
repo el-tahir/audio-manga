@@ -8,6 +8,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies using npm ci for deterministic installs
+# This will install all dependencies, including dotenv if it's in package.json
 RUN npm ci
 
 # Stage 2: Build the application
@@ -20,22 +21,18 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # --- Environment Variables for Build Time ---
-# Set NEXT_PUBLIC variables needed during the build.
-# You might need to pass these as build arguments for flexibility.
-# Example:
-# ARG NEXT_PUBLIC_SUPABASE_URL
-# ENV NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
-# ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
-# ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+# Ensure any NEXT_PUBLIC_ variables needed during build are available here.
+# If using the single ENV secret approach, those won't be available at build time
+# unless passed as build-args and set as ENV here.
+# For simplicity, ensure NEXT_PUBLIC_ vars are either not truly secret or handled
+# via direct ENV vars if needed during build.
 # --- End Environment Variables for Build Time ---
 
 # Build the Next.js application
-# Ensure NEXT_PUBLIC_ variables required by client-side code are available here
 RUN npm run build
 
 # Stage 3: Production Runner
 FROM node:20-alpine AS runner
-# Use Alpine for the final, smallest image. Requires testing for native dependencies.
 
 WORKDIR /app
 
@@ -44,14 +41,17 @@ ENV NODE_ENV=production
 # Prevent Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# Install OS-level dependencies (like unrar if needed for background processing)
-# IMPORTANT: Only include this if the background processor *needs* to run in this container AND processes .cbr files.
-# If background processing is handled elsewhere, remove this RUN command.
-
-# Copy the standalone output from the builder stage
+# Copy the standalone output and the start-server.js script
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/standalone ./ 
+# Ensure start-server.js is in the root of your project to be copied by `COPY . .` in builder stage
+# Then copy it from builder to runner stage
+COPY --from=builder --chown=node:node /app/start-server.js ./start-server.js 
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+
+# Copy the full node_modules from the 'deps' stage
+# This ensures all modules, including dotenv and its dependencies, are present.
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 
 # Set user to non-root (good practice)
 USER node
@@ -62,5 +62,7 @@ EXPOSE 3000
 ENV PORT=3000
 # Set HOST env variable instead of using the -H flag
 ENV HOST=0.0.0.0
+
 # The standalone server should pick up HOST=0.0.0.0
-CMD ["node", "server.js"]
+# CMD is now changed to run the start-server.js script first
+CMD ["node", "start-server.js"]
