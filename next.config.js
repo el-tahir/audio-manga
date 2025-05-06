@@ -2,8 +2,7 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    
-    
+    serverComponentsExternalPackages: ['@google-cloud/tasks'],
   },
   images: {
     domains: ['storage.googleapis.com'],

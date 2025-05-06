@@ -4,9 +4,18 @@ import os from 'os';
 import fs from 'fs/promises'; // Use promises for async file operations
 import AdmZip from 'adm-zip';
 import { supabase } from '@/lib/supabase';
-import { processChapterInBackground } from '@/services/manga-processing/backgroundProcessor';
+import { uploadFileToGCS } from '@/utils/gcsUtils'; // ADDED import
+import { CloudTasksClient } from '@google-cloud/tasks'; // ADDED import back to top
 
 const DETECTIVE_CONAN_SLUG = "01J76XY7HA6DH9YYGREDVPH8W5";
+
+// ADDED: Cloud Tasks configuration
+const project = process.env.GCP_PROJECT_ID!;
+const location = process.env.GCP_QUEUE_LOCATION!; // e.g., 'us-central1'
+const queue = process.env.GCP_QUEUE_ID!; // The name of your queue
+const taskHandlerUrl = process.env.GCP_TASK_HANDLER_URL!; // URL of your Cloud Function
+// ADDED: Temp bucket for zip uploads
+const tempBucketName = process.env.GCP_TEMP_UPLOAD_BUCKET_NAME!;
 
 // Helper function to determine image extension
 function getExtensionFromContentType(contentType: string | null): string {
@@ -179,9 +188,100 @@ export async function POST(
     if (upsertError) throw new Error(`Failed to update chapter status in database: ${upsertError.message}`);
     console.log(`[API download-chapter] Set chapter ${chapterNumberStr} status to pending in DB.`);
 
+    // --- MODIFIED: Replace background processing call with Cloud Task ---
     // 10. Trigger background processing (existing logic)
-    void processChapterInBackground(chapterNumberInt, tempZipPath);
-    console.log(`[API download-chapter] Triggered background processing for chapter ${chapterNumberStr}`);
+    // void processChapterInBackground(chapterNumberInt, tempZipPath); // REMOVED direct call
+    // console.log(`[API download-chapter] Triggered background processing for chapter ${chapterNumberStr}`);
+
+    // ADDED: Upload zip to GCS before creating task
+    if (!tempZipPath) {
+      // This should not happen if zip creation succeeded
+      throw new Error("Temporary zip path is not set before GCS upload.");
+    }
+    if (!tempBucketName) {
+       throw new Error("Missing required environment variable: GCP_TEMP_UPLOAD_BUCKET_NAME");
+    }
+
+    const zipFileName = path.basename(tempZipPath);
+    const gcsZipPath = `temp-chapter-zips/${zipFileName}`; // Define a path in the temp bucket
+    let uploadedGcsPath: string | null = null;
+
+    try {
+      console.log(`[API download-chapter] Uploading ${tempZipPath} to gs://${tempBucketName}/${gcsZipPath}...`);
+      await uploadFileToGCS(tempZipPath, gcsZipPath, tempBucketName);
+      uploadedGcsPath = `gs://${tempBucketName}/${gcsZipPath}`; // Store the full GCS path
+      console.log(`[API download-chapter] Successfully uploaded zip to ${uploadedGcsPath}`);
+    } catch (uploadError: any) {
+        console.error(`[API download-chapter] Failed to upload zip to GCS:`, uploadError);
+        // Update DB status to failed if upload fails, as processing cannot proceed
+        await supabase
+           .from('manga_chapters')
+           .update({ status: 'failed', error_message: `Failed to upload source zip to GCS: ${uploadError.message || uploadError}` })
+           .eq('chapter_number', chapterNumberInt);
+        throw new Error(`Failed to upload source zip to GCS: ${uploadError.message}`); // Throw to trigger outer catch & cleanup
+    }
+
+    // ADDED: Enqueue task for background processing using GCS path
+
+    // Construct credentials object similar to getStorageClient
+    const taskClientOptions: { projectId?: string; credentials?: { client_email: string; private_key: string; } } = {};
+    if (project && process.env.GCP_CLIENT_EMAIL && process.env.GCP_PRIVATE_KEY_BASE64) {
+        taskClientOptions.projectId = project;
+        taskClientOptions.credentials = {
+            client_email: process.env.GCP_CLIENT_EMAIL,
+            private_key: Buffer.from(process.env.GCP_PRIVATE_KEY_BASE64, 'base64').toString('utf8'),
+        };
+         console.log("[API CloudTask Client] Using explicit credentials from ENV variables.");
+    } else {
+        // Fallback or error if expected ENV vars are missing for explicit auth
+        // Alternatively, rely on ADC by passing no options, but that failed.
+        console.error("[API CloudTask Client] Required ENV variables for explicit credentials (GCP_PROJECT_ID, GCP_CLIENT_EMAIL, GCP_PRIVATE_KEY_BASE64) not fully set. Attempting default ADC.");
+        // Keep taskClientOptions empty to attempt ADC, though it previously failed.
+        // Consider throwing an error here if explicit credentials are required for your setup.
+        // throw new Error("Missing required credentials for Cloud Tasks Client");
+    }
+
+    const client = new CloudTasksClient(taskClientOptions);
+
+    const queuePath = client.queuePath(project, location, queue);
+    // Use the GCS path as sourceFilePath
+    const taskPayload = { chapterNumber: chapterNumberInt, sourceFilePath: uploadedGcsPath };
+
+    const task = {
+      httpRequest: {
+        httpMethod: 'POST' as const,
+        url: taskHandlerUrl,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+        },
+        body: Buffer.from(JSON.stringify(taskPayload)).toString('base64'),
+      },
+      // Optional: Schedule time, deadline, etc.
+      // scheduleTime: {
+      //   seconds: Date.now() / 1000 + 10 // Schedule 10 seconds from now
+      // }
+    };
+
+    try {
+      const [response] = await client.createTask({ parent: queuePath, task });
+      console.log(`[API download-chapter] Created Cloud Task ${response.name}`);
+      // tempZipPath = null; // We no longer need this null check, local zip is cleaned up regardless after successful upload/task
+    } catch (taskError: any) {
+        console.error(`[API download-chapter] Error creating Cloud Task:`, taskError);
+        // If task creation fails, we might want to revert the DB status or retry
+        // For now, log the error and continue to return 202, but the task won't run.
+        // Consider more robust error handling here.
+        // Revert status?
+         await supabase
+           .from('manga_chapters')
+           .update({
+                status: 'failed',
+                error_message: `Failed to enqueue processing task: ${taskError.message || taskError}`
+            })
+           .eq('chapter_number', chapterNumberInt);
+         throw new Error(`Failed to enqueue chapter processing task: ${taskError.message}`); // Throw to trigger outer catch
+    }
+    // --- END MODIFICATION ---
 
     // 11. Return 202 Accepted (existing logic)
     return NextResponse.json(
@@ -199,23 +299,31 @@ export async function POST(
     try {
         await supabase
             .from('manga_chapters')
-            .update({ status: 'failed', error_message: error.message || 'Unknown error during download initiation' })
+            .update({ status: 'failed', error_message: error.message || 'Unknown download error' })
             .eq('chapter_number', chapterNumberInt);
     } catch (dbError: any) {
-        console.error('[API download-chapter] Failed to update chapter status to failed after error:', dbError.message || dbError);
+        console.error('[API download-chapter] Failed to update chapter status to failed:', dbError.message);
     }
-    return NextResponse.json(
-      { error: `Failed to initiate download: ${error.message || 'Unknown error'}` },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: `Failed to process chapter ${chapterNumberStr}: ${error.message}` }, { status: 500 });
+
   } finally {
-    // 12. Cleanup download dir (existing logic, ensures downloadedFolderPath is used)
+    // Cleanup only the download directory, not the zip if task was created successfully
     if (downloadedFolderPath) {
-        console.log(`[API download-chapter] Cleaning up temporary download directory: ${downloadedFolderPath}`);
-        fs.rm(downloadedFolderPath, { recursive: true, force: true }).catch(err => {
-          console.error(`[API download-chapter] Error cleaning up temp directory ${downloadedFolderPath}:`, err);
+      console.log(`[API download-chapter] Cleaning up download directory: ${downloadedFolderPath}`);
+      fs.rm(downloadedFolderPath, { recursive: true, force: true }).catch(err => {
+          console.error(`[API download-chapter] Error cleaning up download directory ${downloadedFolderPath}:`, err);
+      });
+    }
+    // MODIFIED: Always clean up local zip path if it exists (after upload attempt)
+    if (tempZipPath) {
+        console.log(`[API download-chapter] Cleaning up local temporary zip: ${tempZipPath}`);
+        fs.unlink(tempZipPath).catch(err => {
+            console.error(`[API download-chapter] Error cleaning up local temporary zip ${tempZipPath}:`, err);
         });
     }
-    // NOTE: tempZipPath is NOT deleted here, background processor handles it.
+    // NOTE: We DO NOT cleanup the GCS file here. The worker is responsible for that.
+    // If task creation failed AFTER successful upload, the GCS file remains.
+    // Consider adding cleanup logic here or a separate garbage collection mechanism for orphaned GCS zips.
   }
 } 

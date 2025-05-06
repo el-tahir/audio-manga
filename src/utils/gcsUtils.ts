@@ -83,3 +83,62 @@ export function getStorageClient(): Storage {
 
   return new Storage(storageOptions);
 }
+
+/**
+ * Downloads a file from Google Cloud Storage to a local path.
+ * @param bucketName - Name of the GCS bucket.
+ * @param sourceGcsPath - Path (object name) of the file in the bucket.
+ * @param destinationLocalPath - Path to save the downloaded file locally.
+ */
+export async function downloadFileFromGCS(
+  bucketName: string,
+  sourceGcsPath: string,
+  destinationLocalPath: string
+): Promise<void> {
+  const storage = getStorageClient();
+  const bucket = storage.bucket(bucketName);
+  const file = bucket.file(sourceGcsPath);
+
+  try {
+    await file.download({ destination: destinationLocalPath });
+    console.log(
+      `[GCS] Downloaded gs://${bucketName}/${sourceGcsPath} to ${destinationLocalPath}`
+    );
+  } catch (err) {
+    console.error(
+      `[GCS] Error downloading gs://${bucketName}/${sourceGcsPath} to ${destinationLocalPath}:`,
+      err
+    );
+    throw err;
+  }
+}
+
+/**
+ * Deletes a file from Google Cloud Storage.
+ * @param bucketName - Name of the GCS bucket.
+ * @param gcsPath - Path (object name) of the file to delete in the bucket.
+ */
+export async function deleteFileFromGCS(
+  bucketName: string,
+  gcsPath: string
+): Promise<void> {
+  const storage = getStorageClient();
+  const bucket = storage.bucket(bucketName);
+  const file = bucket.file(gcsPath);
+
+  try {
+    await file.delete();
+    console.log(`[GCS] Deleted gs://${bucketName}/${gcsPath}`);
+  } catch (err: any) {
+    // Handle "Not Found" errors gracefully, as the file might already be deleted
+    if (err.code === 404) {
+      console.warn(`[GCS] File not found during delete (may already be deleted): gs://${bucketName}/${gcsPath}`);
+    } else {
+      console.error(
+        `[GCS] Error deleting gs://${bucketName}/${gcsPath}:`,
+        err
+      );
+      throw err;
+    }
+  }
+}
