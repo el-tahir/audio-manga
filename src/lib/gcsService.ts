@@ -9,8 +9,28 @@ export async function getSignedUrlForPage(chapterNumber: number, pageNumber: num
 
   try {
     const storage = getStorageClient(); // Initialize GCS client
-    const gcsObjectPath = `chapters/${chapterNumber}/${pageNumber}.jpg`;
-    const file = storage.bucket(bucketName).file(gcsObjectPath);
+    const bucket = storage.bucket(bucketName);
+
+    // Define potential paths
+    const pngPath = `chapters/${chapterNumber}/${pageNumber}.png`;
+    const jpgPath = `chapters/${chapterNumber}/${pageNumber}.jpg`;
+
+    let finalPath: string;
+
+    // Check if the PNG file exists
+    const [pngExists] = await bucket.file(pngPath).exists();
+
+    if (pngExists) {
+      console.log(`[GCS Signed URL] Found PNG for C:${chapterNumber} P:${pageNumber}. Using path: ${pngPath}`);
+      finalPath = pngPath;
+    } else {
+      console.log(`[GCS Signed URL] PNG not found for C:${chapterNumber} P:${pageNumber}. Falling back to JPG path: ${jpgPath}`);
+      finalPath = jpgPath;
+      // Optional: You could add another check here for jpgExists if needed, 
+      // but falling back might be acceptable.
+    }
+
+    const file = bucket.file(finalPath);
 
     // Generate signed URL (same logic as your API route)
     const [signedUrl] = await file.getSignedUrl({
