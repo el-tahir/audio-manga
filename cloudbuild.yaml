@@ -38,7 +38,7 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'audio-manga' # Your Cloud Run service name
+      - 'audio-manga-app' # Your Cloud Run service name
       - '--image'
       - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
       - '--region'
