@@ -2,8 +2,9 @@
 const nextConfig = {
   output: 'standalone',
   experimental: {
-    serverComponentsExternalPackages: ['@google-cloud/tasks'],
+    // serverComponentsExternalPackages: ['@google-cloud/tasks'], // Old key
   },
+  serverExternalPackages: ['@google-cloud/tasks'], // New key
   images: {
     domains: ['storage.googleapis.com'],
   },

@@ -9,6 +9,7 @@ steps:
       - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest'
       - '.'
     id: 'Build Docker Image'
+    secretEnv: ['SUPABASE_URL', 'SUPABASE_ANON_KEY']
 
   # 2. Push the Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
@@ -51,3 +52,14 @@ timeout: '1200s' # 20 minutes
 # Options for logging
 options:
   logging: CLOUD_LOGGING_ONLY
+
+# Define secrets to be made available to the build steps
+# Ensure these secrets (SUPABASE_URL_SECRET and SUPABASE_ANON_KEY_SECRET) exist in your Secret Manager
+# and that the Cloud Build service account ([PROJECT_NUMBER]@cloudbuild.gserviceaccount.com)
+# has the 'Secret Manager Secret Accessor' role for them.
+availableSecrets:
+  secretManager:
+  - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_URL_SECRET/versions/latest
+    env: 'SUPABASE_URL'
+  - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_ANON_KEY_SECRET/versions/latest
+    env: 'SUPABASE_ANON_KEY'
