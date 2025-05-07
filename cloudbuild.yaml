@@ -5,13 +5,19 @@ steps:
     args:
       - '-c'
       - |
-        docker build \\
-          --build-arg SUPABASE_URL=$$SUPABASE_URL \\
-          --build-arg SUPABASE_ANON_KEY=$$SUPABASE_ANON_KEY \\
-          -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA \\
-          -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest \\
+        # The NEXT_PUBLIC_ variables are now directly available in this shell's environment
+        # because of the secretEnv declaration below.
+        # We still need to pass them as build-args to the Dockerfile.
+        docker build \
+          --build-arg BUILD_TIME_NEXT_PUBLIC_SUPABASE_URL="$$NEXT_PUBLIC_SUPABASE_URL" \
+          --build-arg BUILD_TIME_NEXT_PUBLIC_SUPABASE_ANON_KEY="$$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+          -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA \
+          -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest \
           .
     id: 'Build Docker Image'
+    # This makes the secrets available as environment variables to THIS build step's execution environment.
+    # The names here (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) are what we'll use in $$...
+    secretEnv: ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY']
 
   # 2. Push the Docker image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
@@ -62,6 +68,8 @@ options:
 availableSecrets:
   secretManager:
   - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_URL_SECRET/versions/latest
-    env: 'SUPABASE_URL'
+    # Expose the secret directly as NEXT_PUBLIC_SUPABASE_URL to the build step's environment
+    env: 'NEXT_PUBLIC_SUPABASE_URL'
   - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_ANON_KEY_SECRET/versions/latest
-    env: 'SUPABASE_ANON_KEY'
+    # Expose the secret directly as NEXT_PUBLIC_SUPABASE_ANON_KEY to the build step's environment
+    env: 'NEXT_PUBLIC_SUPABASE_ANON_KEY'

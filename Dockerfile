@@ -15,14 +15,14 @@ RUN npm ci
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# Explicitly declare ARGs for build-time secrets
-ARG SUPABASE_URL_ARG
-ARG SUPABASE_ANON_KEY_ARG
+# Explicitly declare ARGs for build-time secrets. These names match what's passed in cloudbuild.yaml.
+ARG BUILD_TIME_NEXT_PUBLIC_SUPABASE_URL
+ARG BUILD_TIME_NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# Set ENV variables for Next.js build process using the ARGs
-# IMPORTANT: Use the names Next.js expects, e.g., NEXT_PUBLIC_*
-ENV NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL_ARG
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY_ARG
+# Set ENV variables for Next.js build process using the ARGs.
+# Next.js build will pick these up automatically.
+ENV NEXT_PUBLIC_SUPABASE_URL=$BUILD_TIME_NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$BUILD_TIME_NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 # Copy dependencies from the 'deps' stage
 COPY --from=deps /app/node_modules ./node_modules
