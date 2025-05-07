@@ -1,0 +1,59 @@
+steps:
+  # 1. Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      [
+        'build',
+        '-t',
+        'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA',
+        '-t',
+        'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest',
+        '.',
+        '-f',
+        'Dockerfile',
+      ]
+    id: 'Build Docker Image'
+
+  # 2. Push the image to Artifact Registry (tagged with commit SHA and latest)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      ['push', 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA']
+    id: 'Push Image (Commit SHA)'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest']
+    id: 'Push Image (Latest)'
+
+  # 3. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      [
+        'run',
+        'deploy',
+        'audio-manga', # Your Cloud Run service name
+        '--image',
+        'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA',
+        '--region',
+        'us-east4', # Your Cloud Run region
+        '--service-account',
+        'main-app-account@inspired-parsec-454518-p7.iam.gserviceaccount.com',
+        '--set-secrets=APPLICATION_ENV_SECRET=ENV:latest', # Your secret
+        '--allow-unauthenticated', # If your service is public
+        '--platform',
+        'managed',
+        '--quiet',
+      ]
+    id: 'Deploy to Cloud Run'
+
+# Store images in Artifact Registry
+images:
+  - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
+  - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest'
+
+# Optional: Timeout for the build
+timeout: '1200s' # 20 minutes
+
+# Options for logging and substitution variables
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true # Enables use of $COMMIT_SHA etc.
