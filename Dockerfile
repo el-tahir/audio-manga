@@ -15,54 +15,61 @@ RUN npm ci
 FROM node:20-slim AS builder
 WORKDIR /app
 
+# Explicitly declare ARGs for build-time secrets
+ARG SUPABASE_URL
+ARG SUPABASE_ANON_KEY
+
+# Set ENV variables for Next.js build process using the ARGs
+# IMPORTANT: Use the names Next.js expects, e.g., NEXT_PUBLIC_*
+ENV NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+
 # Copy dependencies from the 'deps' stage
 COPY --from=deps /app/node_modules ./node_modules
 # Copy the rest of the application code
 COPY . .
 
 # --- Environment Variables for Build Time ---
-# Ensure any NEXT_PUBLIC_ variables needed during build are available here.
+# Ensure any OTHER NEXT_PUBLIC_ variables needed during build are available here.
 # If using the single ENV secret approach, those won't be available at build time
 # unless passed as build-args and set as ENV here.
 # For simplicity, ensure NEXT_PUBLIC_ vars are either not truly secret or handled
-# via direct ENV vars if needed during build.
-# --- End Environment Variables for Build Time ---
+# via other means if they are also sourced from the APPLICATION_ENV_SECRET at runtime.
 
-# Build the Next.js application
+RUN echo "Building with NEXT_PUBLIC_SUPABASE_URL: $NEXT_PUBLIC_SUPABASE_URL"
 RUN npm run build
 
-# Stage 3: Production Runner
-FROM node:20-alpine AS runner
-
+# Stage 3: Production image
+FROM node:20-slim AS runner
 WORKDIR /app
 
-# Set environment to production
 ENV NODE_ENV=production
-# Prevent Next.js telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
+# ENV NEXT_TELEMETRY_DISABLED 1 # Uncomment to disable Next.js telemetry
 
-# Copy the standalone output and the start-server.js script
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=node:node /app/.next/standalone ./ 
-# Ensure start-server.js is in the root of your project to be copied by `COPY . .` in builder stage
-# Then copy it from builder to runner stage
-COPY --from=builder --chown=node:node /app/start-server.js ./start-server.js 
-COPY --from=builder --chown=node:node /app/.next/static ./.next/static
-
-# Copy the full node_modules from the 'deps' stage
-# This ensures all modules, including dotenv and its dependencies, are present.
-COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-
-# Set user to non-root (good practice)
+# Set the user to "node"
 USER node
 
+# Create a non-root user and group for security
+# RUN addgroup --system --gid 1001 nodejs
+# RUN adduser --system --uid 1001 nextjs
+# USER nextjs
+
+COPY --from=builder --chown=node:node /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/package.json ./
+
+# Copy the start-server.js script
+COPY --chown=node:node start-server.js ./
+
+# Copy node_modules, ensuring devDependencies are not included if they were pruned
+# In this setup, node_modules from 'deps' (which includes all) is copied to 'builder',
+# and then .next/standalone handles copying only necessary production node_modules.
+# If you have specific node_modules that .next/standalone misses, you might need to copy them.
+
 EXPOSE 3000
+ENV PORT 3000
 
-# Expose the port the app runs on
-ENV PORT=3000
-# Set HOST env variable instead of using the -H flag
-ENV HOST=0.0.0.0
-
-# The standalone server should pick up HOST=0.0.0.0
-# CMD is now changed to run the start-server.js script first
-CMD ["node", "start-server.js"]
+# CMD [ "node", "server.js" ]
+# Use the custom start script that loads the environment secret
+CMD [ "node", "start-server.js" ]
