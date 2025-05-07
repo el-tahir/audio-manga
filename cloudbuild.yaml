@@ -1,17 +1,16 @@
 steps:
   # 1. Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: bash
     args:
-      - 'build'
-      - '--build-arg'
-      - 'SUPABASE_URL'
-      - '--build-arg'
-      - 'SUPABASE_ANON_KEY'
-      - '-t'
-      - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
-      - '-t'
-      - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest'
-      - '.'
+      - '-c'
+      - |
+        docker build \\
+          --build-arg SUPABASE_URL=$$SUPABASE_URL \\
+          --build-arg SUPABASE_ANON_KEY=$$SUPABASE_ANON_KEY \\
+          -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA \\
+          -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest \\
+          .
     id: 'Build Docker Image'
 
   # 2. Push the Docker image to Artifact Registry
