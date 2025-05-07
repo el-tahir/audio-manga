@@ -4,9 +4,9 @@ steps:
     args:
       - 'build'
       - '--build-arg'
-      - 'SUPABASE_URL'
+      - 'SUPABASE_URL=${SUPABASE_URL}'
       - '--build-arg'
-      - 'SUPABASE_ANON_KEY'
+      - 'SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}'
       - '-t'
       - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
       - '-t'
