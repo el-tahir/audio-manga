@@ -16,13 +16,13 @@ FROM node:20-slim AS builder
 WORKDIR /app
 
 # Explicitly declare ARGs for build-time secrets
-ARG SUPABASE_URL
-ARG SUPABASE_ANON_KEY
+ARG SUPABASE_URL_ARG
+ARG SUPABASE_ANON_KEY_ARG
 
 # Set ENV variables for Next.js build process using the ARGs
 # IMPORTANT: Use the names Next.js expects, e.g., NEXT_PUBLIC_*
-ENV NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL_ARG
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY_ARG
 
 # Copy dependencies from the 'deps' stage
 COPY --from=deps /app/node_modules ./node_modules
