@@ -5,11 +5,13 @@ const nextConfig = {
     // serverComponentsExternalPackages: ['@google-cloud/tasks'], // Old key
     outputFileTracingIncludes: {
       '/api/download-chapter/*': [
-        './node_modules/@google-cloud/tasks/build/esm/src/v2/cloud_tasks_client_config.json'
+        // Include all .json files within the @google-cloud/tasks build directory 
+        // to catch different versions (v2, v2beta2, etc.) and any other JSON configs.
+        './node_modules/@google-cloud/tasks/build/**/*.json'
       ],
       // If other routes also use @google-cloud/tasks and might face similar issues, 
       // you could use a broader pattern or add specific entries for them too, e.g.:
-      // '/api/*': ['./node_modules/@google-cloud/tasks/build/esm/src/v2/**/*.json'],
+      // '/api/*': ['./node_modules/@google-cloud/tasks/build/**/*.json'],
     },
   },
   serverExternalPackages: ['@google-cloud/tasks'], // New key
