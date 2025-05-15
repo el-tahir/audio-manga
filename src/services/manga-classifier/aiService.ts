@@ -7,7 +7,13 @@ import { ClassificationResult } from '@/types';
 const MAX_RETRIES = 3; // Maximum retry attempts
 const REQUEST_TIMEOUT = 60000; // 60 second timeout for API calls
 
-// Function to get an API instance with rotating keys
+/**
+ * Retrieves a GoogleGenerativeAI instance, selecting an API key based on the provided index.
+ * Defaults to the primary API key if no index or index 0 is provided.
+ * @param {number} [keyIndex] - Optional index (0 or 1) to select a specific API key.
+ * @returns {GoogleGenerativeAI} An initialized GoogleGenerativeAI client.
+ * @throws {Error} If the selected API key is not defined in environment variables.
+ */
 function getAIInstance(keyIndex?: number): GoogleGenerativeAI {
   // If specific key index is requested, use it; otherwise use the first one as default
   const apiKey = keyIndex === 1 ? 
@@ -21,7 +27,15 @@ function getAIInstance(keyIndex?: number): GoogleGenerativeAI {
   return new GoogleGenerativeAI(apiKey);
 }
 
-// Enhanced function to handle API key fallback with exponential backoff
+/**
+ * Executes a function that makes an API call, with built-in support for API key fallback and exponential backoff.
+ * It will attempt requests with a primary and a secondary API key if the first one fails, retrying each multiple times.
+ * @template T
+ * @param {(genAI: GoogleGenerativeAI) => Promise<T>} fn - The function to execute. It receives an initialized GoogleGenerativeAI client.
+ * @param {number} [maxRetries=MAX_RETRIES] - Maximum number of retries per API key.
+ * @returns {Promise<T>} The result of the provided function if successful.
+ * @throws {Error} If all API requests fail after all retries with both keys, or if a non-retryable error occurs.
+ */
 export async function executeWithFallback<T>(fn: (genAI: GoogleGenerativeAI) => Promise<T>, maxRetries = MAX_RETRIES): Promise<T> {
   let lastError: any;
   let totalAttempts = 0;
@@ -86,7 +100,11 @@ export async function executeWithFallback<T>(fn: (genAI: GoogleGenerativeAI) => 
   throw lastError || new Error('All API requests failed');
 }
 
-// Helper function to determine error type
+/**
+ * Determines a generic error type string from an error object based on its message.
+ * @param {*} error - The error object.
+ * @returns {string} A string categorizing the error (e.g., 'Rate limit', 'Timeout', 'Network', 'API', 'Unknown').
+ */
 function getErrorType(error: any): string {
   if (!error.message) return 'Unknown';
   
@@ -113,7 +131,11 @@ function getErrorType(error: any): string {
   return 'API';
 }
 
-// Helper function to check if error is rate limit related
+/**
+ * Checks if an error object indicates a rate limit error based on its message.
+ * @param {*} error - The error object.
+ * @returns {boolean} True if the error is related to rate limiting, false otherwise.
+ */
 function isRateLimitError(error: any): boolean {
   return error.message?.includes('too many requests') || 
          error.message?.includes('rate limit') || 
@@ -252,8 +274,7 @@ Focus on Detective Conan's visual language, storytelling patterns, and case stru
       const pageResult = parsedResponse[i];
       const filename = filenames[i];
       
-      // Extract and validate the mood
-      let category: ClassificationResult['category'] = 'investigation'; // Default fallback
+      let category: ClassificationResult['category'] = 'investigation'; // Default fallback if mood is invalid
       let explanation: string = "";
       
       if (pageResult?.mood) {
@@ -265,14 +286,12 @@ Focus on Detective Conan's visual language, storytelling patterns, and case stru
           'conclusion'
         ];
         
-        // Check if the extracted mood is one of the valid categories
         if ((validMoods as string[]).includes(extractedMood)) {
           category = extractedMood as ClassificationResult['category'];
         } else {
           console.warn(`[MANGA-CLASSIFIER] Received invalid mood category for ${filename}: ${extractedMood}. Using fallback '${category}'.`);
         }
         
-        // Compile explanation from various fields
         explanation = [
           pageResult.visual_elements, 
           pageResult.reasoning, 
@@ -297,11 +316,16 @@ Focus on Detective Conan's visual language, storytelling patterns, and case stru
   }
 }
 
-// Simplified function to classify images in a chapter using a 3-image sliding window approach
+/**
+ * Classifies all images in a chapter using a 3-image sliding window approach.
+ * This method processes images in overlapping groups of three to provide context to the AI model.
+ * It includes error handling for API failures on a per-group basis, providing fallback classifications.
+ * @param {string[]} imageFiles - An array of paths to the image files for the chapter.
+ * @returns {Promise<ClassificationResult[]>} A promise that resolves to an array of classification results for all images.
+ */
 export async function classifyChapter(imageFiles: string[]): Promise<ClassificationResult[]> {
   console.log(`[MANGA-CLASSIFIER] Starting classification of ${imageFiles.length} images using 3-image sliding window`);
   
-  // Process empty chapters gracefully
   if (!imageFiles.length) {
     console.log(`[MANGA-CLASSIFIER] No images to process.`);
     return [];
@@ -311,10 +335,8 @@ export async function classifyChapter(imageFiles: string[]): Promise<Classificat
   let lastMood: string | null = null;
   let lastContext: string = "";
   
-  // Process in groups of 3 with a sliding window
   for (let i = 0; i < imageFiles.length; i += 3) {
     try {
-      // Get the next 3 images (or whatever remains)
       const groupImages = imageFiles.slice(i, Math.min(i + 3, imageFiles.length));
       
       console.log(`[MANGA-CLASSIFIER] Processing group ${i/3 + 1}/${Math.ceil(imageFiles.length/3)}: ${groupImages.map(f => path.basename(f)).join(", ")}`);
@@ -326,7 +348,6 @@ export async function classifyChapter(imageFiles: string[]): Promise<Classificat
       
       allResults = [...allResults, ...results];
       
-      // Update context from last processed image
       if (results.length > 0) {
         const lastResult = results[results.length - 1];
         lastMood = lastResult.category;
@@ -350,7 +371,7 @@ export async function classifyChapter(imageFiles: string[]): Promise<Classificat
         
         const result: ClassificationResult = {
           filename: filename,
-          category: fallbackCategory as any,
+          category: fallbackCategory as any, // Using 'as any' for fallback compatibility
           explanation: `Classification failed, using fallback: ${fallbackCategory}`
         };
         
@@ -360,23 +381,21 @@ export async function classifyChapter(imageFiles: string[]): Promise<Classificat
       
       allResults = [...allResults, ...defaultResults];
       
-      // Update context from the last default result
       if (defaultResults.length > 0) {
         lastMood = defaultResults[defaultResults.length - 1].category;
       }
     }
   }
   
-  // // Apply smoothing to ensure reasonable OST transitions
-  // console.log(`[MANGA-CLASSIFIER] Applying smoothing to ${allResults.length} results`);
-  // smoothTransitions(allResults);
-  
-  // console.log(`[MANGA-CLASSIFIER] Classification complete. Total results: ${allResults.length}`);
-  
   return allResults;
 }
 
-// Function to smooth out abrupt transitions between pages
+/**
+ * Smooths out abrupt mood transitions in a sequence of classification results.
+ * It targets isolated mood changes (A-B-A pattern) and rapid oscillations.
+ * Modifies the `results` array in place.
+ * @param {ClassificationResult[]} results - An array of classification results to be smoothed.
+ */
 export function smoothTransitions(results: ClassificationResult[]): void {
   if (results.length < 3) return; // Need at least 3 pages for meaningful smoothing
   
@@ -388,10 +407,9 @@ export function smoothTransitions(results: ClassificationResult[]): void {
     const current = results[i].category;
     const next = results[i+1].category;
     
-    // Check if current mood is different from both neighbors and neighbors match
     if (prev === next && current !== prev) {
       console.log(`[MANGA-CLASSIFIER] Smoothing isolated mood change on page ${i+1}: ${current} -> ${prev}`);
-      results[i].category = prev as any;
+      results[i].category = prev as any; // Using 'as any' for type compatibility during smoothing
       results[i].explanation = `${results[i].explanation || ''} | Smoothed from ${current} to ${prev} for narrative consistency`;
     }
   }
@@ -402,10 +420,9 @@ export function smoothTransitions(results: ClassificationResult[]): void {
     const prev = results[i-1].category;
     const current = results[i].category;
     
-    // If we see A-B-A pattern, set middle to match
     if (prevPrev === current && prev !== current) {
       console.log(`[MANGA-CLASSIFIER] Smoothing oscillation on page ${i}: ${prev} -> ${current}`);
-      results[i-1].category = current as any;
+      results[i-1].category = current as any; // Using 'as any' for type compatibility during smoothing
       results[i-1].explanation = `${results[i-1].explanation || ''} | Changed from ${prev} to ${current} to avoid oscillation`;
     }
   }

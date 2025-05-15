@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 
-// Function to get all image files from directory
+/**
+ * Recursively finds all image files (jpg, jpeg, png, gif, webp) in a directory.
+ * @param {string} dirPath - The path to the directory to search.
+ * @returns {string[]} An array of full paths to the image files, sorted by name.
+ */
 export function getImageFiles(dirPath: string): string[] {
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
   const files: string[] = [];

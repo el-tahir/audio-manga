@@ -23,8 +23,7 @@ export async function GET(
 
     if (chapError) {
       console.error('[API Image GET] DB Error:', chapError);
-      // Decide if DB error should prevent URL generation
-      // return NextResponse.json({ error: 'Database error checking chapter' }, { status: 500 });
+      // It's currently decided that a DB error during chapter check should not prevent signed URL generation attempt.
     }
     if (!chapter && !chapError) { // Only fail if definitively not found (and no DB error)
          return NextResponse.json({ error: 'Chapter not found in DB' }, { status: 404 });

@@ -6,7 +6,12 @@ import childProcess from 'child_process';
 
 const exec = promisify(childProcess.exec);
 
-// Function to extract archive
+/**
+ * Extracts an archive file (ZIP, CBZ, CBR) to a subdirectory named 'extracted'.
+ * @param {string} filePath - The path to the archive file.
+ * @returns {Promise<string>} The path to the directory where files were extracted.
+ * @throws {Error} If the archive format is unsupported or extraction fails.
+ */
 export async function extractArchive(filePath: string): Promise<string> {
   const extractDir = path.join(path.dirname(filePath), 'extracted');
   fs.mkdirSync(extractDir, { recursive: true });

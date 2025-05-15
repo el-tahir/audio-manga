@@ -16,7 +16,6 @@ export async function GET(
       );
     }
 
-    // Verify chapter exists
     const { data: chapterExists, error: chapErr } = await supabase
       .from('manga_chapters')
       .select('chapter_number')

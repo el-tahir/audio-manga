@@ -1,7 +1,11 @@
 import { supabase } from '@/lib/supabase';
 import { ClassificationResult } from '@/types';
 
-// Function to check if chapter exists in database and return its data
+/**
+ * Retrieves a chapter's data from the database.
+ * @param {number} chapterNumber - The chapter number to retrieve.
+ * @returns {Promise<any | null>} A promise that resolves to the chapter data object, or null if not found or on error.
+ */
 export async function getChapterFromDatabase(chapterNumber: number) {
   const { data, error } = await supabase
     .from('manga_chapters')
@@ -17,17 +21,29 @@ export async function getChapterFromDatabase(chapterNumber: number) {
 }
 
 // Backward compatibility function
+/**
+ * Checks if a chapter exists in the database. (Backward compatibility)
+ * @param {number} chapterNumber - The chapter number to check.
+ * @returns {Promise<boolean>} A promise that resolves to true if the chapter exists, false otherwise.
+ */
 export async function chapterExistsInDatabase(chapterNumber: number): Promise<boolean> {
   const chapter = await getChapterFromDatabase(chapterNumber);
   return !!chapter;
 }
 
-// Improved function to check database schema and store classification results
+/**
+ * Stores manga chapter information and its page classifications in the database.
+ * It checks for the existence of an 'explanation' column and adapts the insert accordingly.
+ * It also handles upserting chapter details and batch inserting page classifications.
+ * @param {number} chapterNumber - The chapter number.
+ * @param {ClassificationResult[]} classifications - An array of classification results for the chapter's pages.
+ * @returns {Promise<void>} A promise that resolves when the data has been stored.
+ * @throws {Error} If storing chapter or page classification data fails.
+ */
 export async function storeClassificationsInDatabase(
   chapterNumber: number, 
   classifications: ClassificationResult[]
 ): Promise<void> {
-  // First, check if the explanation column exists in the table
   const { data: columns, error: schemaError } = await supabase
     .from('manga_page_classifications')
     .select('*')
@@ -39,7 +55,6 @@ export async function storeClassificationsInDatabase(
     console.log('[MANGA-CLASSIFIER] Warning: Could not verify schema, will attempt insert without explanation field');
   }
   
-  // Create or update chapter record
   const { error: chapterError } = await supabase
     .from('manga_chapters')
     .upsert(
@@ -56,9 +71,7 @@ export async function storeClassificationsInDatabase(
     throw new Error('Failed to store chapter data');
   }
   
-  // Then, store page classifications - adapt based on schema check
   const pageClassifications = classifications.map((classification, index) => {
-    // Base record with fields we know exist
     const record: any = {
       chapter_number: chapterNumber,
       page_number: index + 1,
@@ -66,7 +79,6 @@ export async function storeClassificationsInDatabase(
       category: classification.category
     };
     
-    // Only add explanation if we think the column exists
     if (hasExplanationColumn) {
       record.explanation = classification.explanation || null;
     }
@@ -90,7 +102,6 @@ export async function storeClassificationsInDatabase(
       if (hasExplanationColumn && pagesError.message?.includes('explanation')) {
         console.log('[MANGA-CLASSIFIER] Retrying without explanation field');
         
-        // Remove explanation field from all records
         const simplifiedBatch = batch.map(record => {
           const { explanation, ...rest } = record;
           return rest;

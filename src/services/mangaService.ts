@@ -36,7 +36,6 @@ export async function getStoredChapterNumbers(): Promise<number[]> {
 export async function getChapterClassifications(
   chapterNumber: number
 ): Promise<ClassificationResult[]> {
-  // Query page classifications by chapter_number
   const { data, error } = await supabase
     .from('manga_page_classifications')
     .select('*')

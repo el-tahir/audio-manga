@@ -30,11 +30,18 @@ export async function uploadFileToGCS(
   }
 }
 
-// Add helper to get authenticated GCS client
+/**
+ * Initializes and returns an authenticated Google Cloud Storage client.
+ * It attempts to load credentials in the following order:
+ * 1. Explicit environment variables (GCP_PROJECT_ID, GCP_CLIENT_EMAIL, GCP_PRIVATE_KEY_BASE64)
+ * 2. JSON credentials from GOOGLE_CLOUD_KEYFILE_JSON environment variable
+ * 3. Service account key file path from GOOGLE_APPLICATION_CREDENTIALS environment variable
+ * @returns {Storage} An initialized GCS Storage client.
+ * @throws {Error} If credentials cannot be determined.
+ */
 export function getStorageClient(): Storage {
   const storageOptions: { projectId?: string; keyFilename?: string; credentials?: { client_email: string; private_key: string; } } = {};
 
-  // Prioritize explicit credentials from env vars
   if (process.env.GCP_PROJECT_ID && process.env.GCP_CLIENT_EMAIL && process.env.GCP_PRIVATE_KEY_BASE64) {
     storageOptions.projectId = process.env.GCP_PROJECT_ID;
     storageOptions.credentials = {
@@ -43,7 +50,6 @@ export function getStorageClient(): Storage {
     };
     console.log("[GCS] Using explicit credentials from ENV variables.");
   } 
-  // Fallback to other methods
   else if (process.env.GOOGLE_CLOUD_KEYFILE_JSON) {
     console.log("[GCS] Using credentials from GOOGLE_CLOUD_KEYFILE_JSON ENV variable.");
     // Type assertion needed as JSON.parse returns any
@@ -58,7 +64,7 @@ export function getStorageClient(): Storage {
   } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     console.log("[GCS] Using credentials file path from GOOGLE_APPLICATION_CREDENTIALS ENV variable.");
     storageOptions.keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-    // Use separate GOOGLE_CLOUD_PROJECT_ID if provided, otherwise GCS client often infers from key file
+    // Use GOOGLE_CLOUD_PROJECT_ID if provided, otherwise GCS client may infer from key file
     if (process.env.GOOGLE_CLOUD_PROJECT_ID) {
         storageOptions.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
     }
@@ -67,17 +73,15 @@ export function getStorageClient(): Storage {
     throw new Error('Google Cloud credentials not set');
   }
   
-  // Final check for projectId if other methods didn't set it
   if (!storageOptions.projectId && process.env.GOOGLE_CLOUD_PROJECT_ID) {
       storageOptions.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
   }
 
   if (!storageOptions.projectId && !storageOptions.keyFilename && !storageOptions.credentials?.client_email) {
-    // Throw error only if no valid credential method was found
-    // Check credentials presence rather than project_id specifically
+    // Throw error if no valid credential method was found (checking credentials presence, not just project_id)
      throw new Error('[GCS] Failed to determine Google Cloud Project ID and credentials.');
   } else if (!storageOptions.projectId && !storageOptions.keyFilename) {
-     // Warn if projectId is missing but credentials seem okay
+     // Warn if projectId is missing but credentials seem okay; GCS client might infer it.
       console.warn("[GCS] Project ID not found in credentials or separate ENV variable (GOOGLE_CLOUD_PROJECT_ID). GCS client might infer it.");
   }
 

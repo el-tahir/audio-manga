@@ -49,7 +49,8 @@ ENV NODE_ENV=production
 # Set the user to "node"
 USER node
 
-# Create a non-root user and group for security
+# Alternative: Create a non-root user and group for better security.
+# The "node" user provided by the base image is simpler to use.
 # RUN addgroup --system --gid 1001 nodejs
 # RUN adduser --system --uid 1001 nextjs
 # USER nextjs
@@ -71,5 +72,6 @@ EXPOSE 3000
 ENV PORT 3000
 
 # CMD [ "node", "server.js" ]
-# Use the custom start script that loads the environment secret
+# Use the custom start-server.js script.
+# This script expects environment variables to be injected by the runtime environment (e.g., Cloud Run).
 CMD [ "node", "start-server.js" ]

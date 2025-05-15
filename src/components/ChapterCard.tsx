@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
-import { BookOpen, Edit } from 'lucide-react'; // Icons for links
+import { BookOpen, Edit } from 'lucide-react';
 
 interface ChapterCardProps {
   chapterNumber: number;
@@ -12,7 +12,6 @@ interface ChapterCardProps {
 }
 
 export default function ChapterCard({ chapterNumber, totalPages, processedAt, status }: ChapterCardProps) {
-  // Format date safely
   let formattedDate = 'N/A';
   if (processedAt) {
     try {
@@ -22,7 +21,6 @@ export default function ChapterCard({ chapterNumber, totalPages, processedAt, st
     }
   }
 
-  // Determine status color
   const getStatusClasses = (status: string): string => {
     if (status === 'completed') return 'text-green-400';
     if (status === 'failed') return 'text-red-400';
@@ -31,7 +29,6 @@ export default function ChapterCard({ chapterNumber, totalPages, processedAt, st
   };
 
   return (
-    // Apply consistent card styling
     <div className="bg-[var(--bg-secondary)] rounded-lg shadow-md p-4 border border-[var(--border-color)] flex flex-col justify-between transition-transform hover:scale-[1.02] hover:shadow-lg">
       <div>
         <h3 className="text-lg font-semibold mb-2 text-white">Chapter {chapterNumber}</h3>
@@ -46,7 +43,7 @@ export default function ChapterCard({ chapterNumber, totalPages, processedAt, st
           href={`/reader/${chapterNumber}`} 
           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-500 transition-colors disabled:opacity-50"
           aria-disabled={status !== 'completed'}
-          onClick={(e) => { if (status !== 'completed') e.preventDefault(); }} // Prevent navigation if not completed
+          onClick={(e) => { if (status !== 'completed') e.preventDefault(); }}
         >
           <BookOpen size={16} />
           Read
@@ -55,7 +52,7 @@ export default function ChapterCard({ chapterNumber, totalPages, processedAt, st
           href={`/moods/${chapterNumber}`} 
           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-teal-600 text-white text-sm rounded hover:bg-teal-500 transition-colors disabled:opacity-50"
           aria-disabled={status !== 'completed'}
-          onClick={(e) => { if (status !== 'completed') e.preventDefault(); }} // Prevent navigation if not completed
+          onClick={(e) => { if (status !== 'completed') e.preventDefault(); }}
         >
           <Edit size={16} />
           View Moods

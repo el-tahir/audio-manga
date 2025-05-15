@@ -6,7 +6,6 @@ export async function GET(
   { params }: { params: Promise<{ chapterNumber: string; pageNumber: string }> }
 ) {
   try {
-    // Await dynamic params
     const { chapterNumber: chapterNumberParam, pageNumber: pageNumberParam } = await params;
     const chapterNumber = Number(chapterNumberParam);
     const pageNumber = Number(pageNumberParam);
@@ -17,10 +16,9 @@ export async function GET(
       );
     }
 
-    // Fetch the specific classification
     const { data: classification, error } = await supabase
       .from('manga_page_classifications')
-      .select('page_number, category, filename, explanation') // Select desired fields
+      .select('page_number, category, filename, explanation')
       .eq('chapter_number', chapterNumber)
       .eq('page_number', pageNumber)
       .maybeSingle(); // Use maybeSingle() to return null if not found, instead of error
@@ -34,7 +32,6 @@ export async function GET(
       return NextResponse.json({ error: 'Classification not found' }, { status: 404 });
     }
 
-    // Return the found classification
     // Map DB fields to consistent camelCase if needed, here they match
     return NextResponse.json({
       pageNumber: classification.page_number,

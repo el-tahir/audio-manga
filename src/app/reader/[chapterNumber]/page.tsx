@@ -47,7 +47,7 @@ export default async function ChapterReaderPage({ params }: PageParams) {
   // Await params before accessing its properties to fix Next.js 15 async params error
   const { chapterNumber: chapterNumberString } = await params;
   const chapterNumber = parseInt(chapterNumberString);
-  const nextChapterNumber = chapterNumber + 1; // Calculate next chapter number
+  const nextChapterNumber = chapterNumber + 1;
   
   let chapterData: { chapter_number: number; total_pages: number } | null = null;
   let classifications: ClassificationData[] | null = null;
@@ -118,7 +118,6 @@ export default async function ChapterReaderPage({ params }: PageParams) {
       const urlPromises = Array.from({ length: totalPages }, (_, i) => i + 1)
         .map(async (pageNumber) => {
           try {
-            // *** Call the utility function directly ***
             const signedUrl = await getSignedUrlForPage(chapterNumber, pageNumber);
             return { id: pageNumber, page_number: pageNumber, signedImageUrl: signedUrl };
           } catch (err) {

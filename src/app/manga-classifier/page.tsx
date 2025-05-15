@@ -3,12 +3,12 @@
 import { useState, useRef, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import {
-  CheckCircle2, // Success icon
-  AlertCircle,  // Info icon
-  AlertTriangle, // Warning icon
-  XCircle,       // Error icon
-  RotateCw,     // Retry icon
-  DownloadCloud // Download icon
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  XCircle,
+  RotateCw,
+  DownloadCloud
 } from 'lucide-react';
 // Removed unused imports
 // import { 
@@ -21,7 +21,7 @@ import {
 interface Chapter {
   chapter_number: number;
   status: string;
-  // Add other potential fields if needed from your API response
+  // Add other potential fields if needed from your API response (e.g., total_pages, error_message)
 }
 
 // Define possible states for the input/chapter interaction
@@ -39,7 +39,7 @@ export default function MangaClassifier() {
   
   // State derived from inputChapterState
   const [inputStatus, setInputStatus] = useState<{ message: string; type: 'info' | 'warning' | 'error' | 'success' | 'none' }>({ message: '', type: 'none' });
-  const [isSubmitDisabled, setIsSubmitDisabled] = useState<boolean>(true); // Default to true when idle
+  const [isSubmitDisabled, setIsSubmitDisabled] = useState<boolean>(true); // Default to true when input is idle
   const [submitButtonText, setSubmitButtonText] = useState<string>('Enter Chapter Number');
 
   // New state to manage overall input/chapter condition
@@ -63,8 +63,6 @@ export default function MangaClassifier() {
       const data: Chapter[] = await res.json();
       data.sort((a, b) => a.chapter_number - b.chapter_number);
       setStoredChapters(data);
-      // Clear global error if fetch succeeds after failing previously
-      // setError(null); 
     } catch (err) {
       console.error('Error fetching chapters:', err);
       setError('Could not load chapter list. Auto-refresh disabled.');
@@ -199,12 +197,12 @@ export default function MangaClassifier() {
     const isProcessing = chapter.status.startsWith('processing') || chapter.status === 'pending';
     return (
       <div className="flex items-center gap-2">
-        {isProcessing && <Spinner size={4} />} {/* Use Tailwind size */} 
+        {isProcessing && <Spinner size={4} />} {/* Spinner for processing states */}
         <span className={getStatusClasses(chapter.status)}>{chapter.status}</span>
         {chapter.status === 'failed' && (
           <button 
             onClick={(e) => { 
-              e.stopPropagation(); // Prevent row click 
+              e.stopPropagation(); // Prevent row click affecting other elements
               triggerDownload(String(chapter.chapter_number)); 
             }}
             disabled={loading} 
@@ -244,9 +242,9 @@ export default function MangaClassifier() {
           <div className="bg-[var(--bg-secondary)] rounded-lg shadow-lg p-5 md:p-6">
             <h2 className="text-xl font-semibold mb-4 border-b border-[var(--border-color)] pb-2 text-white">Chapter Status Overview</h2>
             {loadingStoredChapters ? (
-              <ChapterListSkeleton /> // Use Skeleton Loader
+              <ChapterListSkeleton />
             ) : error && storedChapters.length === 0 ? (
-               // Show error prominently if list fails AND is empty
+               // Show error prominently if list fetching fails and no chapters are loaded
                 <div className="flex items-center gap-2 p-4 bg-red-900/30 border border-red-700 rounded text-red-300">
                   <AlertTriangle size={20} /> {error}
                 </div>
@@ -355,12 +353,20 @@ export default function MangaClassifier() {
 
 // --- Helper Components ---
 
-// Spinner Component (Tailwind based)
+/**
+ * A simple spinner component using Tailwind CSS for animation.
+ * @param {{ size?: number }} props - Component props.
+ * @param {number} [props.size=4] - The size of the spinner (maps to h-size and w-size Tailwind classes).
+ * @returns {JSX.Element}
+ */
 const Spinner = ({ size = 4 }: { size?: number }) => (
   <div className={`animate-spin rounded-full border-2 border-current border-t-transparent h-${size} w-${size}`}></div>
 );
 
-// Skeleton Loader for Chapter List
+/**
+ * A skeleton loader component for the chapter list, showing a pulsing placeholder.
+ * @returns {JSX.Element}
+ */
 const ChapterListSkeleton = () => (
   <div className="space-y-2.5 animate-pulse">
     {[...Array(5)].map((_, i) => (
@@ -372,7 +378,13 @@ const ChapterListSkeleton = () => (
   </div>
 );
 
-// Global Feedback Alert Component
+/**
+ * A global feedback component to display success or error messages.
+ * @param {{ type: 'error' | 'success'; message: string }} props - Component props.
+ * @param {'error' | 'success'} props.type - The type of feedback, determining styling and icon.
+ * @param {string} props.message - The message to display.
+ * @returns {JSX.Element}
+ */
 const GlobalFeedback = ({ type, message }: { type: 'error' | 'success', message: string }) => {
   const baseClasses = "flex items-center gap-3 p-3 rounded-md text-sm";
   const typeClasses = type === 'error' 

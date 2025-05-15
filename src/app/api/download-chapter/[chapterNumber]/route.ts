@@ -4,20 +4,25 @@ import os from 'os';
 import fs from 'fs/promises'; // Use promises for async file operations
 import AdmZip from 'adm-zip';
 import { supabase } from '@/lib/supabase';
-import { uploadFileToGCS } from '@/utils/gcsUtils'; // ADDED import
-import { CloudTasksClient } from '@google-cloud/tasks'; // ADDED import back to top
+import { uploadFileToGCS } from '@/utils/gcsUtils';
+import { CloudTasksClient } from '@google-cloud/tasks';
 
 const DETECTIVE_CONAN_SLUG = "01J76XY7HA6DH9YYGREDVPH8W5";
 
-// ADDED: Cloud Tasks configuration
+// Cloud Tasks configuration
 const project = process.env.GCP_PROJECT_ID!;
 const location = process.env.GCP_QUEUE_LOCATION!; // e.g., 'us-central1'
 const queue = process.env.GCP_QUEUE_ID!; // The name of your queue
 const taskHandlerUrl = process.env.GCP_TASK_HANDLER_URL!; // URL of your Cloud Function
-// ADDED: Temp bucket for zip uploads
+// Temp bucket for zip uploads
 const tempBucketName = process.env.GCP_TEMP_UPLOAD_BUCKET_NAME!;
 
-// Helper function to determine image extension
+/**
+ * Determines the appropriate file extension based on the HTTP Content-Type header.
+ * Defaults to 'png' if the content type is null or not recognized.
+ * @param {string | null} contentType - The value of the Content-Type header.
+ * @returns {string} The determined file extension (e.g., 'jpg', 'png', 'webp', 'gif').
+ */
 function getExtensionFromContentType(contentType: string | null): string {
   if (!contentType) return 'png'; // Default
   contentType = contentType.toLowerCase();
@@ -46,7 +51,7 @@ export async function POST(
   let downloadedFolderPath: string | null = null; // Keep track of the final folder
 
   try {
-    // 1. Check DB (existing logic remains the same)
+    // 1. Check DB
     const { data: existingChapter, error: dbCheckError } = await supabase
       .from('manga_chapters')
       .select('status')
@@ -163,7 +168,7 @@ export async function POST(
 
     // --- End of New Download Logic ---
 
-    // 8. Create Zip Archive (using the path populated by download logic)
+    // 8. Create Zip Archive
     if (!downloadedFolderPath) {
         // This should ideally not happen if mkdtemp succeeded, but safety check
          throw new Error("Temporary download directory path was not set.");
@@ -174,7 +179,7 @@ export async function POST(
     await zip.writeZipPromise(tempZipPath);
     console.log(`[API download-chapter] Created temporary zip archive: ${tempZipPath}`);
 
-    // 9. Update DB Status (existing logic)
+    // 9. Update DB Status
     const { error: upsertError } = await supabase
       .from('manga_chapters')
       .upsert({
@@ -189,11 +194,9 @@ export async function POST(
     console.log(`[API download-chapter] Set chapter ${chapterNumberStr} status to pending in DB.`);
 
     // --- MODIFIED: Replace background processing call with Cloud Task ---
-    // 10. Trigger background processing (existing logic)
-    // void processChapterInBackground(chapterNumberInt, tempZipPath); // REMOVED direct call
-    // console.log(`[API download-chapter] Triggered background processing for chapter ${chapterNumberStr}`);
+    // 10. Trigger background processing by enqueuing a Cloud Task
 
-    // ADDED: Upload zip to GCS before creating task
+    // Upload zip to GCS before creating task
     if (!tempZipPath) {
       // This should not happen if zip creation succeeded
       throw new Error("Temporary zip path is not set before GCS upload.");
@@ -221,7 +224,7 @@ export async function POST(
         throw new Error(`Failed to upload source zip to GCS: ${uploadError.message}`); // Throw to trigger outer catch & cleanup
     }
 
-    // ADDED: Enqueue task for background processing using GCS path
+    // Enqueue task for background processing using GCS path
 
     // Construct credentials object similar to getStorageClient
     const taskClientOptions: { projectId?: string; credentials?: { client_email: string; private_key: string; } } = {};
@@ -265,13 +268,13 @@ export async function POST(
     try {
       const [response] = await client.createTask({ parent: queuePath, task });
       console.log(`[API download-chapter] Created Cloud Task ${response.name}`);
-      // tempZipPath = null; // We no longer need this null check, local zip is cleaned up regardless after successful upload/task
+      // Local temporary zip is cleaned up in the finally block regardless of task creation success after GCS upload attempt.
     } catch (taskError: any) {
         console.error(`[API download-chapter] Error creating Cloud Task:`, taskError);
-        // If task creation fails, we might want to revert the DB status or retry
-        // For now, log the error and continue to return 202, but the task won't run.
-        // Consider more robust error handling here.
-        // Revert status?
+        // If task creation fails, we might want to revert the DB status or retry.
+        // For now, the error is logged, DB status is updated to 'failed',
+        // and an error is thrown to be caught by the outer handler.
+        // The GCS uploaded zip might remain if task creation fails post-upload.
          await supabase
            .from('manga_chapters')
            .update({
@@ -283,7 +286,7 @@ export async function POST(
     }
     // --- END MODIFICATION ---
 
-    // 11. Return 202 Accepted (existing logic)
+    // 11. Return 202 Accepted
     return NextResponse.json(
       {
         message: `Chapter ${chapterNumberStr} download initiated and scheduled for processing. Found ${imageUrls.length} pages.`,
@@ -308,22 +311,23 @@ export async function POST(
     return NextResponse.json({ error: `Failed to process chapter ${chapterNumberStr}: ${error.message}` }, { status: 500 });
 
   } finally {
-    // Cleanup only the download directory, not the zip if task was created successfully
+    // Cleanup the local temporary download directory if it was created.
     if (downloadedFolderPath) {
       console.log(`[API download-chapter] Cleaning up download directory: ${downloadedFolderPath}`);
       fs.rm(downloadedFolderPath, { recursive: true, force: true }).catch(err => {
           console.error(`[API download-chapter] Error cleaning up download directory ${downloadedFolderPath}:`, err);
       });
     }
-    // MODIFIED: Always clean up local zip path if it exists (after upload attempt)
+    // Always clean up the local temporary zip file if it was created, as it should have been uploaded to GCS or is no longer needed.
     if (tempZipPath) {
         console.log(`[API download-chapter] Cleaning up local temporary zip: ${tempZipPath}`);
         fs.unlink(tempZipPath).catch(err => {
             console.error(`[API download-chapter] Error cleaning up local temporary zip ${tempZipPath}:`, err);
         });
     }
-    // NOTE: We DO NOT cleanup the GCS file here. The worker is responsible for that.
-    // If task creation failed AFTER successful upload, the GCS file remains.
-    // Consider adding cleanup logic here or a separate garbage collection mechanism for orphaned GCS zips.
+    // NOTE: We DO NOT cleanup the GCS file from this API route. 
+    // The background worker is responsible for deleting the GCS zip after successful processing.
+    // If task creation failed AFTER successful GCS upload, the GCS file remains.
+    // Consider a separate garbage collection mechanism for orphaned GCS zips if this becomes an issue.
   }
 } 

@@ -2,14 +2,22 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-// Function to create a temporary directory
+/**
+ * Creates a temporary directory for manga classification.
+ * @returns {Promise<string>} The path to the created temporary directory.
+ */
 export async function createTempDir() {
   const tempDir = path.join(os.tmpdir(), `manga-classifier-${Date.now()}`);
   fs.mkdirSync(tempDir, { recursive: true });
   return tempDir;
 }
 
-// Function to clean up temporary files
+/**
+ * Cleans up (deletes) a directory and its contents.
+ * Primarily used for removing temporary directories.
+ * Logs warnings for files/directories that cannot be removed instead of crashing.
+ * @param {string} dirPath - The path to the directory to clean up.
+ */
 export function cleanupTempFiles(dirPath: string) {
   try {
     if (fs.existsSync(dirPath)) {
@@ -53,7 +61,12 @@ export function cleanupTempFiles(dirPath: string) {
   }
 }
 
-// Function to extract chapter number from filename
+/**
+ * Extracts the chapter number from a filename.
+ * Assumes the chapter number is at the beginning of the filename (e.g., "001.cbz", "10.zip").
+ * @param {string} filename - The filename to parse.
+ * @returns {number | null} The extracted chapter number, or null if not found.
+ */
 export function extractChapterNumber(filename: string): number | null {
   const match = filename.match(/^(\d+)/);
   if (match && match[1]) {
@@ -62,36 +75,41 @@ export function extractChapterNumber(filename: string): number | null {
   return null;
 }
 
-// Function to save archive to public/chapters directory
+/**
+ * Saves a file (e.g., a chapter archive) to the public/chapters directory.
+ * The destination filename will be <chapterNumber>.<original_extension>.
+ * @param {string} sourceFilePath - The path to the source file.
+ * @param {number} chapterNumber - The chapter number.
+ * @returns {Promise<string>} The destination path of the saved file.
+ */
 export async function saveToPublicDirectory(sourceFilePath: string, chapterNumber: number): Promise<string> {
-  // Determine the public directory path
   const publicDir = path.join(process.cwd(), 'public', 'chapters');
   
-  // Create the directory if it doesn't exist
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
     console.log(`[MANGA-CLASSIFIER] Created public chapters directory: ${publicDir}`);
   }
   
-  // Get the file extension from the source
   const fileExtension = path.extname(sourceFilePath);
-  
-  // Create the destination path with the chapter number as filename
   const destPath = path.join(publicDir, `${chapterNumber}${fileExtension}`);
   
-  // Copy the file
   fs.copyFileSync(sourceFilePath, destPath);
   console.log(`[MANGA-CLASSIFIER] Saved chapter ${chapterNumber} to public directory: ${destPath}`);
   
   return destPath;
 }
 
-// Function to save individual page images to public directory
+/**
+ * Saves individual image files to a chapter-specific subdirectory within public/chapters.
+ * Images are named sequentially (1.jpg, 2.jpg, etc.).
+ * Existing files in the target chapter directory are cleared before saving new ones.
+ * @param {string[]} imageFiles - An array of paths to the image files to save.
+ * @param {number} chapterNumber - The chapter number.
+ * @returns {Promise<string>} The path to the directory where images were saved.
+ */
 export async function saveImagesToPublicDirectory(imageFiles: string[], chapterNumber: number): Promise<string> {
-  // Create chapter-specific directory
   const chapterDir = path.join(process.cwd(), 'public', 'chapters', chapterNumber.toString());
   
-  // Create the directory if it doesn't exist
   if (!fs.existsSync(chapterDir)) {
     fs.mkdirSync(chapterDir, { recursive: true });
     console.log(`[MANGA-CLASSIFIER] Created chapter directory: ${chapterDir}`);
@@ -109,14 +127,13 @@ export async function saveImagesToPublicDirectory(imageFiles: string[], chapterN
   // Sort the image files to ensure correct page order
   const sortedImageFiles = [...imageFiles].sort();
   
-  // Copy each image with the new naming convention
   for (let i = 0; i < sortedImageFiles.length; i++) {
     const sourceImage = sortedImageFiles[i];
     const pageNumber = i + 1; // 1-based page numbering
     const destImage = path.join(chapterDir, `${pageNumber}.jpg`);
     
-    // Simple file copy - for a more robust solution, you might want to use
-    // an image processing library to ensure consistent jpg format
+    // TODO (YYYY-MM-DD): For a more robust solution, use an image processing library
+    // to ensure consistent JPG format and potentially optimize images.
     fs.copyFileSync(sourceImage, destImage);
     
     if ((i + 1) % 10 === 0 || i === sortedImageFiles.length - 1) {

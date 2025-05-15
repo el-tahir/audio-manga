@@ -5,7 +5,6 @@ import type { Storage } from '@google-cloud/storage';
 const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME || 'audio-manga';
 
 export async function GET(request: NextRequest) {
-  // Initialize GCS client
   let storage: Storage;
   try {
     storage = getStorageClient();

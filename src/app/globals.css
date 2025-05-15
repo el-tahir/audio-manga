@@ -55,8 +55,11 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Charcoal dark theme */      /* Charcoal base - similar to neutral-800 */      /* Light gray text - neutral-200 */
-
+    /* 
+      Charcoal dark theme 
+      - Base color similar to neutral-800
+      - Text color similar to neutral-200
+    */
     --bg-primary: #171717;      /* Darkest - neutral-900 */
     --bg-secondary: #262626;     /* Default card bg - neutral-800 */
     --bg-tertiary: #404040;      /* Inputs, placeholders - neutral-700 */

@@ -72,9 +72,13 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     }
   };
 
-  // --- Audio Utility Functions --- 
+  // --- Audio Utility Functions ---
 
-  // Function to set a random start position in the audio track
+  /**
+   * Sets a random start position for an audio track, typically between 10% and 80% of its duration.
+   * If the duration is too short or invalid, it defaults to the beginning.
+   * @param {HTMLAudioElement | null} audioElement - The audio element to modify.
+   */
   const setRandomStartPosition = (audioElement: HTMLAudioElement | null) => {
     if (!audioElement) return;
     const duration = audioElement.duration;
@@ -104,7 +108,11 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     }
   };
   
-  // Cleanup function for audio elements - Use useCallback
+  /**
+   * Cleans up an HTMLAudioElement by pausing it, resetting its source and state,
+   * and removing event listeners.
+   * @param {HTMLAudioElement | null} audioElement - The audio element to clean up.
+   */
   const cleanupAudio = useCallback((audioElement: HTMLAudioElement | null) => {
     if (audioElement) {
       console.log(`[AudioPlayer] Cleaning up audio element... Paused: ${audioElement.paused}, Src: ${audioElement.src}`);
@@ -125,7 +133,12 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     }
   }, [targetVolume]); // Include targetVolume if needed
 
-  // Fade audio in/out functions - Use useCallback
+  /**
+   * Gradually fades out an audio element over a specified duration.
+   * @param {HTMLAudioElement | null} audioElement - The audio element to fade out.
+   * @param {number} [duration=fadeOutMs] - The duration of the fade-out in milliseconds.
+   * @returns {Promise<void>} A promise that resolves when the fade-out is complete.
+   */
   const fadeOut = useCallback((audioElement: HTMLAudioElement | null, duration: number = fadeOutMs): Promise<void> => {
     return new Promise((resolve) => {
       if (!audioElement || audioElement.volume === 0 || duration <= 0) {
@@ -155,6 +168,12 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     });
   }, [fadeOutMs]);
   
+  /**
+   * Gradually fades in an audio element to the target volume over a specified duration.
+   * @param {HTMLAudioElement | null} audioElement - The audio element to fade in.
+   * @param {number} [duration=fadeInMs] - The duration of the fade-in in milliseconds.
+   * @returns {Promise<void>} A promise that resolves when the fade-in is complete.
+   */
   const fadeIn = useCallback((audioElement: HTMLAudioElement | null, duration: number = fadeInMs): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (!audioElement || !audioElement.src) {
@@ -222,18 +241,16 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     // Maybe attempt to load a different track? Or just stop.
   }, [cleanupAudio]);
 
-  // --- Core Logic Effect --- 
-
-  // Find mood for the current page
+  // --- Core Logic Effect ---
   useEffect(() => {
     const classification = classifications.find(c => c.page_number === currentPage);
     const newMood = classification ? classification.category : null;
     if (newMood !== currentMood) {
-        setPreviousMood(currentMood); // Store the outgoing mood
+        setPreviousMood(currentMood);
         setCurrentMood(newMood);
         console.log(`[AudioPlayer] Page ${currentPage} - Mood should change from "${currentMood}" to "${newMood}"`);
     }
-  }, [currentPage, classifications, currentMood]); // Added currentMood dependency
+  }, [currentPage, classifications, currentMood]);
 
   // Main effect to handle mood changes and track ending
   useEffect(() => {
@@ -367,7 +384,6 @@ export default function AudioPlayer({ classifications }: AudioPlayerProps) {
     if (activeAudio && isPlaying) {
       const effectiveVolume = Math.max(0, Math.min(1, targetVolume));
       if (activeAudio.volume !== effectiveVolume) {
-          // console.log(`[AudioPlayer] Setting live volume: ${effectiveVolume}`);
           activeAudio.volume = effectiveVolume;
       }
     }
