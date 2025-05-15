@@ -26,4 +26,4 @@ The is a web application designed for Detective Conan manga, featuring dynamic s
 * **CI/CD:** A [Google Cloud Build](https://cloud.google.com/build) pipeline automates builds and deployments.
 
 
-Stay tuned for a full release...
+I DO NOT OWN THE RIGHTS TO THE MANGA OR THE DETECTIVE CONAN SOUNDTRACK
