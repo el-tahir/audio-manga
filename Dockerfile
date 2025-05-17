@@ -1,77 +1,75 @@
+# Use an official Node.js runtime as a parent image.
 # Stage 1: Install dependencies
 FROM node:20-slim AS deps
-# Use slim variant for smaller base, check compatibility if issues arise
 
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy package manager files
+# Copy package.json and package-lock.json (or yarn.lock)
 COPY package.json package-lock.json* ./
 
-# Install dependencies using npm ci for deterministic installs
-# This will install all dependencies, including dotenv if it's in package.json
+# Install project dependencies using npm ci for a clean and reproducible install
 RUN npm ci
 
 # Stage 2: Build the application
+# Use an official Node.js runtime as a parent image
 FROM node:20-slim AS builder
+# Set the working directory in the container
 WORKDIR /app
 
-# Explicitly declare ARGs for build-time secrets. These names match what's passed in cloudbuild.yaml.
+# Declare build-time arguments that can be passed during the docker build command
 ARG BUILD_TIME_NEXT_PUBLIC_SUPABASE_URL
 ARG BUILD_TIME_NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# Set ENV variables for Next.js build process using the ARGs.
-# Next.js build will pick these up automatically.
+# Set environment variables for the build process using the build-time arguments
+# These are used by the Next.js build to bake values into the client-side bundle
 ENV NEXT_PUBLIC_SUPABASE_URL=$BUILD_TIME_NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$BUILD_TIME_NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-# Copy dependencies from the 'deps' stage
+# Copy node_modules from the 'deps' stage
+# This leverages Docker's layer caching, so dependencies are not re-installed if package files haven't changed
 COPY --from=deps /app/node_modules ./node_modules
-# Copy the rest of the application code
+
+# Copy the rest of the application code into the container
 COPY . .
 
-# --- Environment Variables for Build Time ---
-# Ensure any OTHER NEXT_PUBLIC_ variables needed during build are available here.
-# If using the single ENV secret approach, those won't be available at build time
-# unless passed as build-args and set as ENV here.
-# For simplicity, ensure NEXT_PUBLIC_ vars are either not truly secret or handled
-# via other means if they are also sourced from the APPLICATION_ENV_SECRET at runtime.
-
+# Echo the Supabase URL to verify it's being passed correctly during the build
 RUN echo "Building with NEXT_PUBLIC_SUPABASE_URL: $NEXT_PUBLIC_SUPABASE_URL"
+# Build the Next.js application for production
 RUN npm run build
 
 # Stage 3: Production image
+# Use a slim Node.js runtime for the final image to reduce size
 FROM node:20-slim AS runner
+# Set the working directory in the container
 WORKDIR /app
 
+# Set the environment to production
+# This optimizes Next.js for performance
 ENV NODE_ENV=production
-# ENV NEXT_TELEMETRY_DISABLED 1 # Uncomment to disable Next.js telemetry
 
-# Set the user to "node"
+# Create a non-root user 'node' and switch to it for better security
+# Running as a non-root user is a security best practice
 USER node
 
-# Alternative: Create a non-root user and group for better security.
-# The "node" user provided by the base image is simpler to use.
-# RUN addgroup --system --gid 1001 nodejs
-# RUN adduser --system --uid 1001 nextjs
-# USER nextjs
-
+# Copy the public assets from the builder stage
 COPY --from=builder --chown=node:node /app/public ./public
+# Copy the standalone Next.js server output from the builder stage
+# This includes only the necessary files to run the application
 COPY --from=builder --chown=node:node /app/.next/standalone ./
+# Copy the static Next.js assets (CSS, JS, etc.) from the builder stage
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+# Copy package.json to ensure all runtime dependencies are available if needed by the standalone server
 COPY --from=builder --chown=node:node /app/package.json ./
 
-# Copy the start-server.js script
+# Copy the custom server start script
 COPY --chown=node:node start-server.js ./
 
-# Copy node_modules, ensuring devDependencies are not included if they were pruned
-# In this setup, node_modules from 'deps' (which includes all) is copied to 'builder',
-# and then .next/standalone handles copying only necessary production node_modules.
-# If you have specific node_modules that .next/standalone misses, you might need to copy them.
-
+# Expose port 3000 to the host
+# This is the default port Next.js runs on
 EXPOSE 3000
+# Set the PORT environment variable, which might be used by hosting platforms
 ENV PORT 3000
 
-# CMD [ "node", "server.js" ]
-# Use the custom start-server.js script.
-# This script expects environment variables to be injected by the runtime environment (e.g., Cloud Run).
+# Command to run the application using the custom start script
 CMD [ "node", "start-server.js" ]

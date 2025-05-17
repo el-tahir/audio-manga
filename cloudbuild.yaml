@@ -1,76 +1,94 @@
+# This file defines the continuous integration and deployment (CI/CD) pipeline using Google Cloud Build.
+
 steps:
-  # 1. Build the Docker image
+  # Step 1: Build the Docker image
+  # This step uses the standard Docker builder from Google Container Registry (gcr.io).
   - name: 'gcr.io/cloud-builders/docker'
+    # Use bash as the entrypoint to execute a shell script.
     entrypoint: bash
     args:
-      - '-c'
+      - '-c' # Option to pass a command string to bash.
       - |
-        # The NEXT_PUBLIC_ variables are now directly available in this shell's environment
-        # because of the secretEnv declaration below.
-        # We still need to pass them as build-args to the Dockerfile.
+        # This multi-line script executes the docker build command.
+        # The NEXT_PUBLIC_ variables are made directly available in this shell's environment
+        # by the secretEnv declaration below for this step.
+        # They are then passed as build-time arguments (--build-arg) to the Dockerfile.
         docker build \
           --build-arg BUILD_TIME_NEXT_PUBLIC_SUPABASE_URL="$$NEXT_PUBLIC_SUPABASE_URL" \
           --build-arg BUILD_TIME_NEXT_PUBLIC_SUPABASE_ANON_KEY="$$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
           -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA \
           -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest \
           .
-    id: 'Build Docker Image'
-    # This makes the secrets available as environment variables to THIS build step's execution environment.
-    # The names here (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY) are what we'll use in $$...
+    id: 'Build Docker Image' # Identifier for this build step.
+    
+    # Specifies environment variables to be set from secrets stored in Secret Manager.
+    # These secrets (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    # are decrypted and made available as environment variables (e.g., $$NEXT_PUBLIC_SUPABASE_URL)
+    # specifically for this build step.
     secretEnv: ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY']
 
-  # 2. Push the Docker image to Artifact Registry
+  # Step 2: Push the Docker image tagged with the commit SHA
+  # This step pushes the newly built image to Google Artifact Registry.
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
-    id: 'Push Commit SHA Tag'
+    id: 'Push Commit SHA Tag' # Identifier for this build step.
 
+  # Step 3: Push the Docker image tagged with 'latest'
+  # This step also pushes the image to Google Artifact Registry but tags it as 'latest'.
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest'
-    id: 'Push Latest Tag'
+    id: 'Push Latest Tag' # Identifier for this build step.
 
-  # 3. Deploy to Cloud Run
+  # Step 4: Deploy the application to Google Cloud Run
+  # This step uses the Google Cloud SDK builder to deploy the container image.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    # Use gcloud as the entrypoint for executing gcloud commands.
     entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'audio-manga-app' # Your Cloud Run service name
-      - '--image'
-      - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
-      - '--region'
-      - 'us-east4' # The region of your Cloud Run service
-      - '--service-account'
+      - 'run' # Command group for Cloud Run operations.
+      - 'deploy' # Subcommand to deploy a new revision.
+      - 'audio-manga-app' # The name of the Cloud Run service.
+      - '--image' # Flag to specify the container image to deploy.
+      - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA' # Image URL using the commit SHA tag.
+      - '--region' # Flag to specify the Google Cloud region for deployment.
+      - 'us-east4' 
+      - '--service-account' # Flag to specify the IAM service account for the Cloud Run service.
       - 'main-app-account@inspired-parsec-454518-p7.iam.gserviceaccount.com'
-      # Replace with your actual environment variables and secret names
-      - '--set-secrets=NODE_ENV=NODE_ENV_SECRET:latest,NEXT_PUBLIC_SUPABASE_ANON_KEY=NEXT_PUBLIC_SUPABASE_ANON_KEY_SECRET:latest,NEXT_PUBLIC_SUPABASE_URL=NEXT_PUBLIC_SUPABASE_URL_SECRET:latest,POSTGRES_DATABASE=POSTGRES_DATABASE_SECRET:latest,POSTGRES_HOST=POSTGRES_HOST_SECRET:latest,POSTGRES_PASSWORD=POSTGRES_PASSWORD_SECRET:latest,POSTGRES_PRISMA_URL=POSTGRES_PRISMA_URL_SECRET:latest,POSTGRES_URL=POSTGRES_URL_SECRET:latest,POSTGRES_URL_NON_POOLING=POSTGRES_URL_NON_POOLING_SECRET:latest,POSTGRES_USER=POSTGRES_USER_SECRET:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY_SECRET:latest,GOOGLE_API_KEY_2=GOOGLE_API_KEY_2_SECRET:latest,GOOGLE_CLOUD_PROJECT_ID=GOOGLE_CLOUD_PROJECT_ID_SECRET:latest,GOOGLE_CLOUD_BUCKET_NAME=GOOGLE_CLOUD_BUCKET_NAME_SECRET:latest,GCP_PRIVATE_KEY_BASE64=GCP_PRIVATE_KEY_BASE64_SECRET:latest,GCP_PROJECT_ID=GCP_PROJECT_ID_SECRET:latest,GCP_CLIENT_EMAIL=GCP_CLIENT_EMAIL_SECRET:latest,GCP_QUEUE_LOCATION=GCP_QUEUE_LOCATION_SECRET:latest,GCP_QUEUE_ID=GCP_QUEUE_ID_SECRET:latest,GCP_TASK_HANDLER_URL=GCP_TASK_HANDLER_URL_SECRET:latest,GCP_TEMP_UPLOAD_BUCKET_NAME=GCP_TEMP_UPLOAD_BUCKET_NAME_SECRET:latest' # Reference your individual secrets
-      - '--quiet'
-    id: 'Deploy to Cloud Run'
+      # --set-secrets: Maps secrets from Google Secret Manager to environment variables in the Cloud Run service.
+      # Each mapping is in the format: ENV_VARIABLE_NAME=SECRET_NAME:SECRET_VERSION
+      # This is a secure way to provide sensitive configuration to the running application.
+      - '--set-secrets=NODE_ENV=NODE_ENV_SECRET:latest,NEXT_PUBLIC_SUPABASE_ANON_KEY=NEXT_PUBLIC_SUPABASE_ANON_KEY_SECRET:latest,NEXT_PUBLIC_SUPABASE_URL=NEXT_PUBLIC_SUPABASE_URL_SECRET:latest,POSTGRES_DATABASE=POSTGRES_DATABASE_SECRET:latest,POSTGRES_HOST=POSTGRES_HOST_SECRET:latest,POSTGRES_PASSWORD=POSTGRES_PASSWORD_SECRET:latest,POSTGRES_PRISMA_URL=POSTGRES_PRISMA_URL_SECRET:latest,POSTGRES_URL=POSTGRES_URL_SECRET:latest,POSTGRES_URL_NON_POOLING=POSTGRES_URL_NON_POOLING_SECRET:latest,POSTGRES_USER=POSTGRES_USER_SECRET:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY_SECRET:latest,GOOGLE_API_KEY_2=GOOGLE_API_KEY_2_SECRET:latest,GOOGLE_CLOUD_PROJECT_ID=GOOGLE_CLOUD_PROJECT_ID_SECRET:latest,GOOGLE_CLOUD_BUCKET_NAME=GOOGLE_CLOUD_BUCKET_NAME_SECRET:latest,GCP_PRIVATE_KEY_BASE64=GCP_PRIVATE_KEY_BASE64_SECRET:latest,GCP_PROJECT_ID=GCP_PROJECT_ID_SECRET:latest,GCP_CLIENT_EMAIL=GCP_CLIENT_EMAIL_SECRET:latest,GCP_QUEUE_LOCATION=GCP_QUEUE_LOCATION_SECRET:latest,GCP_QUEUE_ID=GCP_QUEUE_ID_SECRET:latest,GCP_TASK_HANDLER_URL=GCP_TASK_HANDLER_URL_SECRET:latest,GCP_TEMP_UPLOAD_BUCKET_NAME=GCP_TEMP_UPLOAD_BUCKET_NAME_SECRET:latest' 
+      - '--quiet' # Suppresses interactive prompts from gcloud.
+    id: 'Deploy to Cloud Run' # Identifier for this build step.
 
-# Define the image tags
+# Lists the container images that are built by this pipeline.
+# This information can be used by other tools or for auditing purposes.
 images:
   - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA'
   - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest'
 
-# Optional: Timeout for the build
+# Specifies the maximum amount of time the entire build is allowed to run.
+# Format: number followed by 's' for seconds.
 timeout: '1200s' # 20 minutes
 
-# Options for logging
+# Configuration options for the build.
 options:
+  # Specifies the logging mode for the build.
+  # CLOUD_LOGGING_ONLY means logs are sent only to Google Cloud Logging.
   logging: CLOUD_LOGGING_ONLY
 
-# Define secrets to be made available to the build steps
-# Ensure these secrets (SUPABASE_URL_SECRET and SUPABASE_ANON_KEY_SECRET) exist in your Secret Manager
-# and that the Cloud Build service account ([PROJECT_NUMBER]@cloudbuild.gserviceaccount.com)
-# has the 'Secret Manager Secret Accessor' role for them.
+# Defines secrets from Google Secret Manager that are made available to the build steps.
+# This section makes secrets accessible to the build environment, particularly to the `secretEnv` directive in build steps.
 availableSecrets:
   secretManager:
+  # Specifies a secret version from Secret Manager.
+  # versionName: The full resource name of the secret version.
+  # env: The environment variable name that the secret value will be assigned to in the build step's environment (if used in `secretEnv`).
   - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_URL_SECRET/versions/latest
-    # Expose the secret directly as NEXT_PUBLIC_SUPABASE_URL to the build step's environment
     env: 'NEXT_PUBLIC_SUPABASE_URL'
   - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_ANON_KEY_SECRET/versions/latest
-    # Expose the secret directly as NEXT_PUBLIC_SUPABASE_ANON_KEY to the build step's environment
     env: 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
