@@ -1,12 +1,6 @@
 import { useEffect } from 'react';
 import Image from 'next/image';
-
-interface ImageModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  imageSrc: string;
-  alt: string;
-}
+import { ImageModalProps } from '@/types';
 
 export default function ImageModal({ isOpen, onClose, imageSrc, alt }: ImageModalProps) {
   useEffect(() => {
@@ -28,14 +22,11 @@ export default function ImageModal({ isOpen, onClose, imageSrc, alt }: ImageModa
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
-      <div 
-        className="relative max-w-full max-h-full"
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="relative max-w-full max-h-full" onClick={e => e.stopPropagation()}>
         <button
           onClick={onClose}
           className="absolute -top-10 right-0 text-white hover:text-gray-300"
@@ -55,4 +46,4 @@ export default function ImageModal({ isOpen, onClose, imageSrc, alt }: ImageModa
       </div>
     </div>
   );
-} 
+}

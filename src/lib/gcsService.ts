@@ -1,14 +1,17 @@
-import { getStorageClient } from '@/utils/gcsUtils';
+import { createGCSClient } from '@/utils/gcsUtils';
 
 const bucketName = process.env.GOOGLE_CLOUD_BUCKET_NAME;
 
-export async function getSignedUrlForPage(chapterNumber: number, pageNumber: number): Promise<string> {
+export async function getSignedUrlForPage(
+  chapterNumber: number,
+  pageNumber: number
+): Promise<string> {
   if (!bucketName) {
-    throw new Error("Missing GOOGLE_CLOUD_BUCKET_NAME environment variable");
+    throw new Error('Missing GOOGLE_CLOUD_BUCKET_NAME environment variable');
   }
 
   try {
-    const storage = getStorageClient();
+    const storage = createGCSClient();
     const bucket = storage.bucket(bucketName);
 
     const pngPath = `chapters/${chapterNumber}/${pageNumber}.png`;
@@ -19,10 +22,14 @@ export async function getSignedUrlForPage(chapterNumber: number, pageNumber: num
     const [pngExists] = await bucket.file(pngPath).exists();
 
     if (pngExists) {
-      console.log(`[GCS Signed URL] Found PNG for C:${chapterNumber} P:${pageNumber}. Using path: ${pngPath}`);
+      console.log(
+        `[GCS Signed URL] Found PNG for C:${chapterNumber} P:${pageNumber}. Using path: ${pngPath}`
+      );
       finalPath = pngPath;
     } else {
-      console.log(`[GCS Signed URL] PNG not found for C:${chapterNumber} P:${pageNumber}. Falling back to JPG path: ${jpgPath}`);
+      console.log(
+        `[GCS Signed URL] PNG not found for C:${chapterNumber} P:${pageNumber}. Falling back to JPG path: ${jpgPath}`
+      );
       finalPath = jpgPath;
     }
 
@@ -31,11 +38,17 @@ export async function getSignedUrlForPage(chapterNumber: number, pageNumber: num
     const [signedUrl] = await file.getSignedUrl({
       version: 'v4',
       action: 'read',
-      expires: Date.now() + 15 * 60 * 1000 // 15 minutes
+      expires: Date.now() + 15 * 60 * 1000, // 15 minutes
     });
     return signedUrl;
-  } catch (error: any) {
-    console.error(`Error getting signed URL for chapter ${chapterNumber}, page ${pageNumber}:`, error);
-    throw new Error(`Failed to get signed URL for C:${chapterNumber} P:${pageNumber} - ${error.message}`);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error(
+      `Error getting signed URL for chapter ${chapterNumber}, page ${pageNumber}:`,
+      err
+    );
+    throw new Error(
+      `Failed to get signed URL for C:${chapterNumber} P:${pageNumber} - ${err.message}`
+    );
   }
-} 
+}

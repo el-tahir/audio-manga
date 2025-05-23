@@ -20,7 +20,6 @@ steps:
           -t us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:latest \
           .
     id: 'Build Docker Image' # Identifier for this build step.
-    
     # Specifies environment variables to be set from secrets stored in Secret Manager.
     # These secrets (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)
     # are decrypted and made available as environment variables (e.g., $$NEXT_PUBLIC_SUPABASE_URL)
@@ -55,13 +54,13 @@ steps:
       - '--image' # Flag to specify the container image to deploy.
       - 'us-east4-docker.pkg.dev/inspired-parsec-454518-p7/audio-manga-repo/audio-manga:$COMMIT_SHA' # Image URL using the commit SHA tag.
       - '--region' # Flag to specify the Google Cloud region for deployment.
-      - 'us-east4' 
+      - 'us-east4'
       - '--service-account' # Flag to specify the IAM service account for the Cloud Run service.
       - 'main-app-account@inspired-parsec-454518-p7.iam.gserviceaccount.com'
       # --set-secrets: Maps secrets from Google Secret Manager to environment variables in the Cloud Run service.
       # Each mapping is in the format: ENV_VARIABLE_NAME=SECRET_NAME:SECRET_VERSION
       # This is a secure way to provide sensitive configuration to the running application.
-      - '--set-secrets=NODE_ENV=NODE_ENV_SECRET:latest,NEXT_PUBLIC_SUPABASE_ANON_KEY=NEXT_PUBLIC_SUPABASE_ANON_KEY_SECRET:latest,NEXT_PUBLIC_SUPABASE_URL=NEXT_PUBLIC_SUPABASE_URL_SECRET:latest,POSTGRES_DATABASE=POSTGRES_DATABASE_SECRET:latest,POSTGRES_HOST=POSTGRES_HOST_SECRET:latest,POSTGRES_PASSWORD=POSTGRES_PASSWORD_SECRET:latest,POSTGRES_PRISMA_URL=POSTGRES_PRISMA_URL_SECRET:latest,POSTGRES_URL=POSTGRES_URL_SECRET:latest,POSTGRES_URL_NON_POOLING=POSTGRES_URL_NON_POOLING_SECRET:latest,POSTGRES_USER=POSTGRES_USER_SECRET:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY_SECRET:latest,GOOGLE_API_KEY_2=GOOGLE_API_KEY_2_SECRET:latest,GOOGLE_CLOUD_PROJECT_ID=GOOGLE_CLOUD_PROJECT_ID_SECRET:latest,GOOGLE_CLOUD_BUCKET_NAME=GOOGLE_CLOUD_BUCKET_NAME_SECRET:latest,GCP_PRIVATE_KEY_BASE64=GCP_PRIVATE_KEY_BASE64_SECRET:latest,GCP_PROJECT_ID=GCP_PROJECT_ID_SECRET:latest,GCP_CLIENT_EMAIL=GCP_CLIENT_EMAIL_SECRET:latest,GCP_QUEUE_LOCATION=GCP_QUEUE_LOCATION_SECRET:latest,GCP_QUEUE_ID=GCP_QUEUE_ID_SECRET:latest,GCP_TASK_HANDLER_URL=GCP_TASK_HANDLER_URL_SECRET:latest,GCP_TEMP_UPLOAD_BUCKET_NAME=GCP_TEMP_UPLOAD_BUCKET_NAME_SECRET:latest' 
+      - '--set-secrets=NODE_ENV=NODE_ENV_SECRET:latest,NEXT_PUBLIC_SUPABASE_ANON_KEY=NEXT_PUBLIC_SUPABASE_ANON_KEY_SECRET:latest,NEXT_PUBLIC_SUPABASE_URL=NEXT_PUBLIC_SUPABASE_URL_SECRET:latest,POSTGRES_DATABASE=POSTGRES_DATABASE_SECRET:latest,POSTGRES_HOST=POSTGRES_HOST_SECRET:latest,POSTGRES_PASSWORD=POSTGRES_PASSWORD_SECRET:latest,POSTGRES_PRISMA_URL=POSTGRES_PRISMA_URL_SECRET:latest,POSTGRES_URL=POSTGRES_URL_SECRET:latest,POSTGRES_URL_NON_POOLING=POSTGRES_URL_NON_POOLING_SECRET:latest,POSTGRES_USER=POSTGRES_USER_SECRET:latest,SUPABASE_JWT_SECRET=SUPABASE_JWT_SECRET_SECRET:latest,GOOGLE_API_KEY=GOOGLE_API_KEY_SECRET:latest,GOOGLE_API_KEY_2=GOOGLE_API_KEY_2_SECRET:latest,GOOGLE_CLOUD_PROJECT_ID=GOOGLE_CLOUD_PROJECT_ID_SECRET:latest,GOOGLE_CLOUD_BUCKET_NAME=GOOGLE_CLOUD_BUCKET_NAME_SECRET:latest,GCP_PRIVATE_KEY_BASE64=GCP_PRIVATE_KEY_BASE64_SECRET:latest,GCP_PROJECT_ID=GCP_PROJECT_ID_SECRET:latest,GCP_CLIENT_EMAIL=GCP_CLIENT_EMAIL_SECRET:latest,GCP_QUEUE_LOCATION=GCP_QUEUE_LOCATION_SECRET:latest,GCP_QUEUE_ID=GCP_QUEUE_ID_SECRET:latest,GCP_TASK_HANDLER_URL=GCP_TASK_HANDLER_URL_SECRET:latest,GCP_TEMP_UPLOAD_BUCKET_NAME=GCP_TEMP_UPLOAD_BUCKET_NAME_SECRET:latest'
       - '--quiet' # Suppresses interactive prompts from gcloud.
     id: 'Deploy to Cloud Run' # Identifier for this build step.
 
@@ -85,10 +84,10 @@ options:
 # This section makes secrets accessible to the build environment, particularly to the `secretEnv` directive in build steps.
 availableSecrets:
   secretManager:
-  # Specifies a secret version from Secret Manager.
-  # versionName: The full resource name of the secret version.
-  # env: The environment variable name that the secret value will be assigned to in the build step's environment (if used in `secretEnv`).
-  - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_URL_SECRET/versions/latest
-    env: 'NEXT_PUBLIC_SUPABASE_URL'
-  - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_ANON_KEY_SECRET/versions/latest
-    env: 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
+    # Specifies a secret version from Secret Manager.
+    # versionName: The full resource name of the secret version.
+    # env: The environment variable name that the secret value will be assigned to in the build step's environment (if used in `secretEnv`).
+    - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_URL_SECRET/versions/latest
+      env: 'NEXT_PUBLIC_SUPABASE_URL'
+    - versionName: projects/inspired-parsec-454518-p7/secrets/SUPABASE_ANON_KEY_SECRET/versions/latest
+      env: 'NEXT_PUBLIC_SUPABASE_ANON_KEY'

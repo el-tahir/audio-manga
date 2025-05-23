@@ -1,17 +1,11 @@
-"use client"
+'use client';
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowLeft } from 'lucide-react';
 import CategorySelector from '@/components/CategorySelector';
-
-interface PageClassification {
-  id: number;
-  category: string;
-  confidence: number | null;
-  explanation: string | null;
-}
+import { PageClassification } from '@/types';
 
 export default function PageView() {
   const params = useParams<{ chapterNumber: string; pageNumber: string }>();
@@ -33,19 +27,26 @@ export default function PageView() {
         const res = await fetch(`/api/chapters/${chapterNumber}/classifications/${pageNumber}`);
         if (!res.ok) {
           if (res.status === 404) {
-             throw new Error(`Classification for page ${pageNumber} not found`);
+            throw new Error(`Classification for page ${pageNumber} not found`);
           } else {
             throw new Error(`Failed to fetch classification (status: ${res.status})`);
           }
         }
         // Response is now the single classification object
-        const found: { pageNumber: number; category: string; filename?: string; explanation?: string } = await res.json();
-        
+        const found: {
+          pageNumber: number;
+          category: string;
+          filename?: string;
+          explanation?: string;
+        } = await res.json();
+
         setClassification({
           id: found.pageNumber, // Use found.pageNumber directly
+          page_number: found.pageNumber,
           category: found.category,
           confidence: null, // Confidence isn't returned by this API
-          explanation: found.explanation || null
+          explanation: found.explanation || null,
+          filename: found.filename || '',
         });
       } catch (err) {
         setError(err as Error);
@@ -77,9 +78,9 @@ export default function PageView() {
   }, [chapterNumber, pageNumber]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-primary)] text-[var(--foreground)]">
+    <div className="min-h-screen flex flex-col bg-bg-primary text-foreground">
       {/* Header with back button and category selector */}
-      <div className="w-full bg-[var(--bg-secondary)] p-3 shadow-md">
+      <div className="w-full bg-bg-secondary p-3 shadow-md">
         <div className="container mx-auto flex justify-between items-center">
           <button
             onClick={() => router.back()}
@@ -97,8 +98,8 @@ export default function PageView() {
                   chapterNumber={Number(chapterNumber)}
                   pageNumber={Number(pageNumber)}
                   currentCategory={classification.category}
-                  onCategoryChange={(newCategory) => 
-                    setClassification(prev => prev ? {...prev, category: newCategory} : null)
+                  onCategoryChange={newCategory =>
+                    setClassification(prev => (prev ? { ...prev, category: newCategory } : null))
                   }
                 />
               </div>
@@ -127,21 +128,17 @@ export default function PageView() {
 
       {/* Classification details */}
       {!loading && !error && classification && (
-        <div className="w-full bg-[var(--bg-secondary)] p-4 border-t border-[var(--border-color)]">
+        <div className="w-full bg-bg-secondary p-4 border-t border-border-default">
           <div className="container mx-auto text-white">
             {classification.confidence && (
-              <p className="mb-2">
-                Confidence: {(classification.confidence * 100).toFixed(1)}%
-              </p>
+              <p className="mb-2">Confidence: {(classification.confidence * 100).toFixed(1)}%</p>
             )}
             {classification.explanation && (
-              <p className="italic text-gray-300">
-                "{classification.explanation}"
-              </p>
+              <p className="italic text-gray-300">&quot;{classification.explanation}&quot;</p>
             )}
           </div>
         </div>
       )}
     </div>
   );
-} 
+}

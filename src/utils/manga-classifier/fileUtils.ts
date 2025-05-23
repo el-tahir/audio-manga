@@ -23,7 +23,7 @@ export function cleanupTempFiles(dirPath: string) {
     if (fs.existsSync(dirPath)) {
       const deleteRecursive = (dir: string) => {
         if (fs.existsSync(dir)) {
-          fs.readdirSync(dir).forEach((file) => {
+          fs.readdirSync(dir).forEach(file => {
             const curPath = path.join(dir, file);
             try {
               if (fs.lstatSync(curPath).isDirectory()) {
@@ -34,7 +34,9 @@ export function cleanupTempFiles(dirPath: string) {
                 } catch (err) {
                   // If we can't delete the file, just log it rather than crashing
                   const fileError = err as Error;
-                  console.warn(`[MANGA-CLASSIFIER] Could not delete temporary file ${curPath}: ${fileError.message}`);
+                  console.warn(
+                    `[MANGA-CLASSIFIER] Could not delete temporary file ${curPath}: ${fileError.message}`
+                  );
                 }
               }
             } catch (err) {
@@ -42,17 +44,19 @@ export function cleanupTempFiles(dirPath: string) {
               console.warn(`[MANGA-CLASSIFIER] Error accessing ${curPath}: ${statError.message}`);
             }
           });
-          
+
           // Try to remove the directory but don't crash if it fails
           try {
             fs.rmdirSync(dir);
           } catch (err) {
             const dirError = err as Error;
-            console.warn(`[MANGA-CLASSIFIER] Could not remove directory ${dir}: ${dirError.message}`);
+            console.warn(
+              `[MANGA-CLASSIFIER] Could not remove directory ${dir}: ${dirError.message}`
+            );
           }
         }
       };
-      
+
       deleteRecursive(dirPath);
       console.log(`[MANGA-CLASSIFIER] Temp directory cleanup attempted for ${dirPath}`);
     }
@@ -77,39 +81,67 @@ export function extractChapterNumber(filename: string): number | null {
 
 /**
  * Saves a file (e.g., a chapter archive) to the public/chapters directory.
- * The destination filename will be <chapterNumber>.<original_extension>.
+ *
+ * ⚠️  LEGACY FUNCTION - FOR LOCAL DEVELOPMENT/TESTING ONLY ⚠️
+ *
+ * This function serves as a local fallback for development and testing purposes.
+ * In production, all files should be stored in Google Cloud Storage (GCS) and served
+ * via signed URLs through the main reader flow.
+ *
+ * NOTE: Files saved here are NOT automatically cleaned up and will persist in the
+ * public directory. This is intended for manual inspection and debugging only.
+ *
  * @param {string} sourceFilePath - The path to the source file.
  * @param {number} chapterNumber - The chapter number.
  * @returns {Promise<string>} The destination path of the saved file.
+ * @deprecated Use GCS upload functions for production workflows
  */
-export async function saveToPublicDirectory(sourceFilePath: string, chapterNumber: number): Promise<string> {
+export async function saveToPublicDirectory(
+  sourceFilePath: string,
+  chapterNumber: number
+): Promise<string> {
   const publicDir = path.join(process.cwd(), 'public', 'chapters');
-  
+
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
     console.log(`[MANGA-CLASSIFIER] Created public chapters directory: ${publicDir}`);
   }
-  
+
   const fileExtension = path.extname(sourceFilePath);
   const destPath = path.join(publicDir, `${chapterNumber}${fileExtension}`);
-  
+
   fs.copyFileSync(sourceFilePath, destPath);
   console.log(`[MANGA-CLASSIFIER] Saved chapter ${chapterNumber} to public directory: ${destPath}`);
-  
+
   return destPath;
 }
 
 /**
  * Saves individual image files to a chapter-specific subdirectory within public/chapters.
- * Images are named sequentially (1.jpg, 2.jpg, etc.).
- * Existing files in the target chapter directory are cleared before saving new ones.
+ *
+ * ⚠️  LEGACY FUNCTION - FOR LOCAL DEVELOPMENT/TESTING ONLY ⚠️
+ *
+ * This function serves as a local fallback for development and testing purposes.
+ * In production, all images should be processed and stored in Google Cloud Storage (GCS)
+ * and served via signed URLs through the main reader flow.
+ *
+ * Images are named sequentially (1.jpg, 2.jpg, etc.) and existing files in the target
+ * chapter directory are cleared before saving new ones.
+ *
+ * NOTE: Files saved here are NOT automatically cleaned up and will persist in the
+ * public directory. This is intended for manual inspection and debugging only.
+ *
  * @param {string[]} imageFiles - An array of paths to the image files to save.
  * @param {number} chapterNumber - The chapter number.
  * @returns {Promise<string>} The path to the directory where images were saved.
+ * @deprecated Use GCS upload functions for production workflows
  */
-export async function saveImagesToPublicDirectory(imageFiles: string[], chapterNumber: number): Promise<string> {
+export async function saveImagesToPublicDirectory(
+  imageFiles: string[],
+  chapterNumber: number
+): Promise<string> {
   const chapterDir = path.join(process.cwd(), 'public', 'chapters', chapterNumber.toString());
-  
+
   if (!fs.existsSync(chapterDir)) {
     fs.mkdirSync(chapterDir, { recursive: true });
     console.log(`[MANGA-CLASSIFIER] Created chapter directory: ${chapterDir}`);
@@ -123,23 +155,25 @@ export async function saveImagesToPublicDirectory(imageFiles: string[], chapterN
     });
     console.log(`[MANGA-CLASSIFIER] Cleared existing files in chapter directory: ${chapterDir}`);
   }
-  
+
   // Sort the image files to ensure correct page order
   const sortedImageFiles = [...imageFiles].sort();
-  
+
   for (let i = 0; i < sortedImageFiles.length; i++) {
     const sourceImage = sortedImageFiles[i];
     const pageNumber = i + 1; // 1-based page numbering
     const destImage = path.join(chapterDir, `${pageNumber}.jpg`);
-    
-    // TODO (YYYY-MM-DD): For a more robust solution, use an image processing library
-    // to ensure consistent JPG format and potentially optimize images.
+
+    // For now, we use simple file copying to maintain the legacy behavior
+    // This function is deprecated and should only be used for local development
     fs.copyFileSync(sourceImage, destImage);
-    
+
     if ((i + 1) % 10 === 0 || i === sortedImageFiles.length - 1) {
-      console.log(`[MANGA-CLASSIFIER] Saved ${i + 1}/${sortedImageFiles.length} images for chapter ${chapterNumber}`);
+      console.log(
+        `[MANGA-CLASSIFIER] Saved ${i + 1}/${sortedImageFiles.length} images for chapter ${chapterNumber}`
+      );
     }
   }
-  
+
   return chapterDir;
 }

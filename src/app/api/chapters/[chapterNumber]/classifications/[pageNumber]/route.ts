@@ -1,5 +1,16 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { supabase } from '@/lib/supabase';
+import { MOOD_CATEGORIES } from '@/config/constants';
+
+// Zod schema for PATCH request body validation
+const UpdateClassificationSchema = z.object({
+  category: z.enum(MOOD_CATEGORIES, {
+    errorMap: () => ({
+      message: `Invalid category. Must be one of: ${MOOD_CATEGORIES.join(', ')}`,
+    }),
+  }),
+});
 
 export async function GET(
   request: Request, // Keep request parameter even if unused for consistency
@@ -10,10 +21,7 @@ export async function GET(
     const chapterNumber = Number(chapterNumberParam);
     const pageNumber = Number(pageNumberParam);
     if (isNaN(chapterNumber) || isNaN(pageNumber)) {
-      return NextResponse.json(
-        { error: 'Invalid chapterNumber or pageNumber' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid chapterNumber or pageNumber' }, { status: 400 });
     }
 
     const { data: classification, error } = await supabase
@@ -33,22 +41,19 @@ export async function GET(
     }
 
     // Map DB fields to consistent camelCase if needed, here they match
-    return NextResponse.json({
-      pageNumber: classification.page_number,
-      category: classification.category,
-      filename: classification.filename,
-      explanation: classification.explanation
-    }, { status: 200 });
-
-  } catch (err: any) {
-    console.error(
-      '[API .../[pageNumber] GET] Internal server error:',
-      err
-    );
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      {
+        pageNumber: classification.page_number,
+        category: classification.category,
+        filename: classification.filename,
+        explanation: classification.explanation,
+      },
+      { status: 200 }
     );
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[API .../[pageNumber] GET] Internal server error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -62,18 +67,34 @@ export async function PATCH(
     const chapterNumber = Number(chapterNumberParam);
     const pageNumber = Number(pageNumberParam);
     if (isNaN(chapterNumber) || isNaN(pageNumber)) {
+      return NextResponse.json({ error: 'Invalid chapterNumber or pageNumber' }, { status: 400 });
+    }
+
+    // Parse and validate request body using Zod
+    let requestBody;
+    try {
+      requestBody = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
+
+    const validationResult = UpdateClassificationSchema.safeParse(requestBody);
+    if (!validationResult.success) {
+      const errorMessages = validationResult.error.errors
+        .map(err => `${err.path.join('.')}: ${err.message}`)
+        .join(', ');
+
       return NextResponse.json(
-        { error: 'Invalid chapterNumber or pageNumber' },
+        {
+          error: 'Validation failed',
+          details: errorMessages,
+          validCategories: MOOD_CATEGORIES,
+        },
         { status: 400 }
       );
     }
 
-    // Only updating category
-    const { category } = await request.json();
-    const allowed = ['intro','love','love_ran','casual','adventure','comedy','action_casual','action_serious','tragic','tension','confrontation','investigation','revelation','conclusion'];
-    if (!category || !allowed.includes(category)) {
-      return NextResponse.json({ error: `Invalid category: ${category}` }, { status: 400 });
-    }
+    const { category } = validationResult.data;
 
     const { data: updated, error } = await supabase
       .from('manga_page_classifications')
@@ -88,25 +109,29 @@ export async function PATCH(
       if (error.code === 'PGRST116') {
         return NextResponse.json({ error: 'Classification not found' }, { status: 404 });
       }
-      console.error('[API /api/chapters/[chapterNumber]/classifications/[pageNumber] PATCH] DB error:', error);
+      console.error(
+        '[API /api/chapters/[chapterNumber]/classifications/[pageNumber] PATCH] DB error:',
+        error
+      );
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // Return updated classification
-    return NextResponse.json({
-      pageNumber: updated.page_number,
-      category: updated.category,
-      filename: updated.filename,
-      explanation: updated.explanation
-    }, { status: 200 });
-  } catch (err: any) {
+    return NextResponse.json(
+      {
+        pageNumber: updated.page_number,
+        category: updated.category,
+        filename: updated.filename,
+        explanation: updated.explanation,
+      },
+      { status: 200 }
+    );
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
     console.error(
       '[API /api/chapters/[chapterNumber]/classifications/[pageNumber] PATCH] Internal server error:',
-      err
+      error
     );
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

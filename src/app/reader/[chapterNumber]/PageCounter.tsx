@@ -1,20 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import usePageObserver from './usePageObserver';
-
-interface PageCounterProps {
-  totalPages: number;
-}
+import { PageCounterProps } from '@/types';
 
 export default function PageCounter({ totalPages }: PageCounterProps) {
   const currentPage = usePageObserver();
-  
+
+  if (!currentPage || totalPages === 0) return null;
+
   return (
-    <div className="fixed bottom-6 right-6 bg-black/70 text-white px-4 py-2 rounded-full shadow-lg font-medium">
-      <span>
-        Page {currentPage} of {totalPages}
-      </span>
+    <div className="bg-black/70 text-white px-3 py-1.5 rounded-full text-sm font-medium">
+      {currentPage} / {totalPages}
     </div>
   );
 }

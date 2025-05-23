@@ -1,13 +1,20 @@
 /**
  * Test script for Google Cloud Storage access
- * 
+ *
  * Usage: node scripts/test-gcp-access.js
  */
 
-require('dotenv').config({ path: '.env.local' });
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const dotenv = require('dotenv');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { Storage } = require('@google-cloud/storage');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const fs = require('fs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const path = require('path');
+
+// Load environment variables
+dotenv.config({ path: '.env.local' });
 
 // Configuration
 const credentialsPath = process.env.GOOGLE_CLOUD_CREDENTIALS || './google-credentials.json';
@@ -55,7 +62,7 @@ try {
 
   // Test bucket access
   console.log(`\n3. Testing access to bucket "${bucketName}"...`);
-  
+
   (async () => {
     try {
       // Check if bucket exists
@@ -66,41 +73,41 @@ try {
       }
 
       console.log(`✅ Bucket "${bucketName}" exists`);
-      
+
       // List files in the bucket (limit to top level)
-      const [files] = await storage.bucket(bucketName).getFiles({ 
-        delimiter: '/' 
+      const [files] = await storage.bucket(bucketName).getFiles({
+        delimiter: '/',
       });
       console.log(`✅ Successfully listed ${files.length} files at bucket root`);
-      
+
       // Try to list folders in /audio if they exist
-      const [audioFiles] = await storage.bucket(bucketName).getFiles({ 
+      const [audioFiles] = await storage.bucket(bucketName).getFiles({
         prefix: 'audio/',
-        delimiter: '/' 
+        delimiter: '/',
       });
-      
+
       console.log(`✅ Found ${audioFiles.length} files/folders in audio/`);
-      
+
       // Try to print some actual paths
       console.log('\n4. Some files in your bucket:');
       const allFiles = files.concat(audioFiles);
       allFiles.slice(0, 5).forEach(file => {
         console.log(`- ${file.name}`);
       });
-      
-      console.log('\n✅ DIAGNOSIS COMPLETE: Your Google Cloud Storage setup appears to be working!');
-      
+
+      console.log(
+        '\n✅ DIAGNOSIS COMPLETE: Your Google Cloud Storage setup appears to be working!'
+      );
     } catch (error) {
       console.error(`\n❌ ERROR accessing bucket:`, error);
       console.log('\nPossible issues:');
-      console.log('1. Your service account doesn\'t have access to this bucket');
+      console.log("1. Your service account doesn't have access to this bucket");
       console.log('2. The bucket name is incorrect');
       console.log('3. Your credentials file is not valid or has expired');
       process.exit(1);
     }
   })();
-  
 } catch (error) {
   console.error('\n❌ ERROR initializing Storage client:', error);
   process.exit(1);
-} 
+}

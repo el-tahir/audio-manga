@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
@@ -8,37 +8,30 @@ import {
   AlertTriangle,
   XCircle,
   RotateCw,
-  DownloadCloud
+  DownloadCloud,
 } from 'lucide-react';
+import { Chapter, InputChapterStateType } from '@/types';
+import { POLLING_INTERVAL } from '@/config/constants';
 // Removed unused imports
-// import { 
+// import {
 //   chapterExistsInDatabase,
 //   getChapterClassifications
 // } from '@/services/mangaService';
 // import { ClassificationResult } from '@/types';
 
-// Define Chapter type for clarity
-interface Chapter {
-  chapter_number: number;
-  status: string;
-  // Add other potential fields if needed from your API response (e.g., total_pages, error_message)
-}
-
-// Define possible states for the input/chapter interaction
-type InputChapterStateType = 'idle' | 'invalid' | 'ready_new' | 'processing' | 'completed' | 'failed_retryable';
-
-const POLLING_INTERVAL = 5000; // Poll every 5 seconds
-
 export default function MangaClassifier() {
-  const [chapterNumberInput, setChapterNumberInput] = useState<string>("");
+  const [chapterNumberInput, setChapterNumberInput] = useState<string>('');
   const [loading, setLoading] = useState(false); // For API call button state
   const [error, setError] = useState<string | null>(null);
   const [storedChapters, setStoredChapters] = useState<Chapter[]>([]);
   const [loadingStoredChapters, setLoadingStoredChapters] = useState(true);
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
-  
+
   // State derived from inputChapterState
-  const [inputStatus, setInputStatus] = useState<{ message: string; type: 'info' | 'warning' | 'error' | 'success' | 'none' }>({ message: '', type: 'none' });
+  const [inputStatus, setInputStatus] = useState<{
+    message: string;
+    type: 'info' | 'warning' | 'error' | 'success' | 'none';
+  }>({ message: '', type: 'none' });
   const [isSubmitDisabled, setIsSubmitDisabled] = useState<boolean>(true); // Default to true when input is idle
   const [submitButtonText, setSubmitButtonText] = useState<string>('Enter Chapter Number');
 
@@ -49,7 +42,7 @@ export default function MangaClassifier() {
 
   // --- Set Page Title ---
   useEffect(() => {
-    document.title = "Manga Classifier - Detective Conan";
+    document.title = 'Manga Classifier - Detective Conan';
   }, []);
 
   // --- Data Fetching & Polling ---
@@ -60,7 +53,12 @@ export default function MangaClassifier() {
     try {
       const res = await fetch('/api/chapters');
       if (!res.ok) throw new Error('Failed to fetch chapters');
-      const data: Chapter[] = await res.json();
+      const responseData = await res.json();
+
+      // The API returns { chapters: Chapter[], pagination: {...} }
+      // Extract the chapters array from the response
+      const data: Chapter[] = responseData.chapters || responseData;
+
       data.sort((a, b) => a.chapter_number - b.chapter_number);
       setStoredChapters(data);
     } catch (err) {
@@ -80,7 +78,9 @@ export default function MangaClassifier() {
     fetchChapters(true);
     if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     pollingIntervalRef.current = setInterval(fetchChapters, POLLING_INTERVAL);
-    return () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); };
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
   }, []);
 
   // --- Input Handling & Validation ---
@@ -101,7 +101,8 @@ export default function MangaClassifier() {
         setInputChapterState('completed');
       } else if (existingChapter.status === 'failed') {
         setInputChapterState('failed_retryable');
-      } else { // Includes processing, pending, etc.
+      } else {
+        // Includes processing, pending, etc.
         setInputChapterState('processing');
       }
     } else {
@@ -129,13 +130,19 @@ export default function MangaClassifier() {
         setSubmitButtonText('Already Processed');
         break;
       case 'failed_retryable':
-        setInputStatus({ message: `Chapter ${num} failed previously. Ready to retry.`, type: 'warning' });
+        setInputStatus({
+          message: `Chapter ${num} failed previously. Ready to retry.`,
+          type: 'warning',
+        });
         setIsSubmitDisabled(false);
         setSubmitButtonText('Retry Chapter');
         break;
       case 'processing':
         const existing = storedChapters.find(c => c.chapter_number === parseInt(num, 10));
-        setInputStatus({ message: `Chapter ${num} is currently processing (Status: ${existing?.status || '...'}).`, type: 'info' });
+        setInputStatus({
+          message: `Chapter ${num} is currently processing (Status: ${existing?.status || '...'}).`,
+          type: 'info',
+        });
         setIsSubmitDisabled(true);
         setSubmitButtonText('Processing...');
         break;
@@ -150,7 +157,7 @@ export default function MangaClassifier() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setChapterNumberInput(e.target.value);
-    setError(null); 
+    setError(null);
     setProcessingMessage(null);
   };
 
@@ -165,7 +172,7 @@ export default function MangaClassifier() {
       if (res.status === 202) {
         setProcessingMessage(data.message || `Processing started for chapter ${chapterNumStr}`);
         await fetchChapters(); // Refresh list immediately
-        setChapterNumberInput(""); // Clear input on success
+        setChapterNumberInput(''); // Clear input on success
       } else if (res.status === 409) {
         setError(data.message || `Chapter ${chapterNumStr} already exists or is processing.`);
       } else {
@@ -173,7 +180,22 @@ export default function MangaClassifier() {
       }
     } catch (err) {
       console.error('Error initiating download:', err);
-      setError(err instanceof Error ? err.message : 'Failed to initiate download');
+
+      // Provide more helpful error messages for common issues
+      let errorMessage = err instanceof Error ? err.message : 'Failed to initiate download';
+
+      if (
+        errorMessage.includes('500 Internal Server Error') ||
+        errorMessage.includes('Cubari API is currently experiencing issues')
+      ) {
+        errorMessage = `⚠️ Manga source (Cubari) is temporarily unavailable. This is a known issue with their servers. Please try again in a few minutes.`;
+      } else if (errorMessage.includes('Failed to fetch series data')) {
+        errorMessage = `📡 Unable to connect to manga source. Please check your internet connection and try again.`;
+      } else if (errorMessage.includes('Chapter') && errorMessage.includes('not found')) {
+        errorMessage = `📚 Chapter ${chapterNumStr} was not found in the source. Please verify the chapter number is correct.`;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -194,18 +216,19 @@ export default function MangaClassifier() {
   };
 
   const renderStatus = (chapter: Chapter) => {
-    const isProcessing = chapter.status.startsWith('processing') || chapter.status === 'pending';
+    const isProcessing =
+      chapter.status && (chapter.status.startsWith('processing') || chapter.status === 'pending');
     return (
       <div className="flex items-center gap-2">
         {isProcessing && <Spinner size={4} />} {/* Spinner for processing states */}
-        <span className={getStatusClasses(chapter.status)}>{chapter.status}</span>
+        <span className={getStatusClasses(chapter.status || '')}>{chapter.status}</span>
         {chapter.status === 'failed' && (
-          <button 
-            onClick={(e) => { 
+          <button
+            onClick={e => {
               e.stopPropagation(); // Prevent row click affecting other elements
-              triggerDownload(String(chapter.chapter_number)); 
+              triggerDownload(String(chapter.chapter_number));
             }}
-            disabled={loading} 
+            disabled={loading}
             className="ml-2 p-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             aria-label={`Retry chapter ${chapter.chapter_number}`}
           >
@@ -218,184 +241,186 @@ export default function MangaClassifier() {
 
   const getInputStatusIcon = (type: typeof inputStatus.type) => {
     switch (type) {
-      case 'success': return <CheckCircle2 size={18} className="text-green-500" />;
-      case 'warning': return <AlertTriangle size={18} className="text-yellow-500" />;
-      case 'error': return <XCircle size={18} className="text-red-500" />;
-      case 'info': return <AlertCircle size={18} className="text-blue-500" />;
-      default: return null;
+      case 'success':
+        return <CheckCircle2 size={18} className="text-green-500" />;
+      case 'warning':
+        return <AlertTriangle size={18} className="text-yellow-500" />;
+      case 'error':
+        return <XCircle size={18} className="text-red-500" />;
+      case 'info':
+        return <AlertCircle size={18} className="text-blue-500" />;
+      default:
+        return null;
     }
   };
 
   // --- Main Render ---
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--foreground)]">
+    <div className="min-h-screen bg-bg-primary text-foreground">
       <Navbar />
       <main className="container mx-auto p-4 md:p-6 lg:p-8 max-w-4xl">
-        <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">Add New Chapter</h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">
+          Add New Chapter
+        </h1>
         <p className="text-center text-gray-400 mb-8 text-base">
-          View the status of processed Detective Conan chapters or submit a new chapter for processing.
+          View the status of processed Detective Conan chapters or submit a new chapter for
+          processing.
         </p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
 
-          {/* Chapters List Card */} 
-          <div className="bg-[var(--bg-secondary)] rounded-lg shadow-lg p-5 md:p-6">
-            <h2 className="text-xl font-semibold mb-4 border-b border-[var(--border-color)] pb-2 text-white">Chapter Status Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+          {/* Chapters List Card */}
+          <div className="bg-bg-secondary rounded-lg shadow-lg p-5 md:p-6">
+            <h2 className="text-xl font-semibold mb-4 border-b border-border-default pb-2 text-white">
+              Chapter Status Overview
+            </h2>
             {loadingStoredChapters ? (
               <ChapterListSkeleton />
             ) : error && storedChapters.length === 0 ? (
-               // Show error prominently if list fetching fails and no chapters are loaded
-                <div className="flex items-center gap-2 p-4 bg-red-900/30 border border-red-700 rounded text-red-300">
-                  <AlertTriangle size={20} /> {error}
-                </div>
-            ) : (
-              <div className="max-h-96 overflow-y-auto pr-2"> {/* Scrollable List */} 
-                {storedChapters.length === 0 ? (
-                   <p className="text-gray-500 italic text-center py-4">No chapters processed yet. Add one below!</p>
-                ) : (
-                   <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-[var(--bg-secondary)] z-10">
-                         <tr className="border-b border-[var(--border-color)]">
-                           <th className="text-left py-2 px-3 border-b border-[var(--border-color)] text-sm font-medium text-gray-400">Chapter</th>
-                           <th className="text-left py-2 px-3 border-b border-[var(--border-color)] text-sm font-medium text-gray-400">Status</th>
-                         </tr>
-                      </thead>
-                      <tbody>
-                         {storedChapters.map((chap) => (
-                           <tr 
-                              key={chap.chapter_number}
-                              className={`border-b border-[var(--border-color)] hover:bg-[var(--bg-tertiary)]/50 cursor-pointer transition-colors ${chap.status === 'completed' ? 'opacity-70' : ''}`}
-                              onClick={() => setChapterNumberInput(String(chap.chapter_number))}
-                              title={`Click to load chapter ${chap.chapter_number}`}
-                           >
-                             <td className="py-2.5 px-3 text-sm text-gray-300">{chap.chapter_number}</td>
-                             <td className="py-2.5 px-3 text-sm">{renderStatus(chap)}</td>
-                           </tr>
-                         ))}
-                      </tbody>
-                   </table>
-                 )}
+              // Show error prominently if list fetching fails and no chapters are loaded
+              <div className="flex items-center gap-2 p-4 bg-red-900/30 border border-red-700 rounded text-red-300">
+                <AlertTriangle size={20} /> {error}
               </div>
-            )}
-            {/* Show polling error discreetly if list is already populated */}
-            {error && storedChapters.length > 0 && (
-                 <p className="text-xs text-red-400 mt-3 text-center">{error}</p>
+            ) : (
+              <div className="max-h-96 overflow-y-auto pr-2">
+                {' '}
+                {/* Scrollable List */}
+                {storedChapters.length === 0 ? (
+                  <p className="text-gray-500 italic text-center py-4">
+                    No chapters processed yet. Add one below!
+                  </p>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-bg-secondary z-10">
+                      <tr className="border-b border-border-default">
+                        <th className="text-left py-2 px-3 border-b border-border-default text-sm font-medium text-gray-400">
+                          Chapter
+                        </th>
+                        <th className="text-left py-2 px-3 border-b border-border-default text-sm font-medium text-gray-400">
+                          Pages
+                        </th>
+                        <th className="text-left py-2 px-3 border-b border-border-default text-sm font-medium text-gray-400">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {storedChapters.map(chapter => (
+                        <tr
+                          key={chapter.chapter_number}
+                          className="border-b border-border-default hover:bg-bg-tertiary transition-colors"
+                        >
+                          <td className="py-2 px-3 text-white">{chapter.chapter_number}</td>
+                          <td className="py-2 px-3 text-gray-300">{chapter.total_pages}</td>
+                          <td className="py-2 px-3">{renderStatus(chapter)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Download Form Card */} 
-          <div className="bg-[var(--bg-secondary)] rounded-lg shadow-lg p-5 md:p-6">
-            <h2 className="text-xl font-semibold mb-4 text-white">Add & Classify Chapter</h2>
-            <p className="text-sm text-gray-400 mb-5">
-              Enter a Detective Conan chapter number to download and classify its pages.
-            </p>
-            
+          {/* Add Chapter Card */}
+          <div className="bg-bg-secondary rounded-lg shadow-lg p-5 md:p-6">
+            <h2 className="text-xl font-semibold mb-4 border-b border-border-default pb-2 text-white">
+              Add New Chapter
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="chapter-input" className="block text-sm font-medium text-gray-400 mb-1">Chapter Number</label>
+                <label
+                  htmlFor="chapterNumber"
+                  className="block text-sm font-medium text-gray-300 mb-2"
+                >
+                  Chapter Number
+                </label>
                 <input
-                  id="chapter-input"
-                  type="number" 
+                  type="number"
+                  id="chapterNumber"
                   value={chapterNumberInput}
                   onChange={handleInputChange}
                   placeholder="e.g., 1120"
-                  className={`w-full px-3 py-2 bg-[var(--bg-tertiary)] border rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors ${ 
-                    inputStatus.type === 'error' ? 'border-red-500' : 
-                    inputStatus.type === 'warning' ? 'border-yellow-500' : 
-                    inputStatus.type === 'success' ? 'border-green-500' : 'border-[var(--border-color)] focus:border-blue-400' 
-                  }`}
+                  className="w-full px-3 py-2 bg-bg-tertiary text-foreground rounded border border-border-default focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={loading}
                 />
-                {/* Input Status Message Area */} 
-                <div className="flex items-center gap-2 mt-1.5 min-h-[20px] text-xs" aria-live="polite">
-                  {getInputStatusIcon(inputStatus.type)}
-                  <span className={
-                    inputStatus.type === 'error' ? 'text-red-400' : 
-                    inputStatus.type === 'warning' ? 'text-yellow-400' : 
-                    inputStatus.type === 'success' ? 'text-green-400' : 
-                    inputStatus.type === 'info' ? 'text-blue-400' : 'text-gray-500'
-                  }>
-                    {inputStatus.message || '\u00A0'} {/* Use non-breaking space to maintain height */} 
-                  </span>
-                </div>
+                {/* Input Status Message */}
+                {inputStatus.type !== 'none' && (
+                  <div
+                    className={`flex items-center gap-2 mt-2 text-sm ${
+                      inputStatus.type === 'success'
+                        ? 'text-green-500'
+                        : inputStatus.type === 'warning'
+                          ? 'text-yellow-500'
+                          : inputStatus.type === 'error'
+                            ? 'text-red-500'
+                            : inputStatus.type === 'info'
+                              ? 'text-blue-500'
+                              : ''
+                    }`}
+                  >
+                    {getInputStatusIcon(inputStatus.type)}
+                    <span>{inputStatus.message}</span>
+                  </div>
+                )}
               </div>
-
               <button
                 type="submit"
-                disabled={loading || isSubmitDisabled || !chapterNumberInput}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150"
+                disabled={isSubmitDisabled || loading}
+                className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded transition-colors flex items-center justify-center gap-2"
               >
                 {loading ? (
-                  <Spinner size={5} />
-                ) : submitButtonText === 'Retry Chapter' ? (
-                  <RotateCw size={18} />
+                  <>
+                    <Spinner size={4} />
+                    Processing...
+                  </>
                 ) : (
-                  <DownloadCloud size={18} />
+                  <>
+                    <DownloadCloud size={18} />
+                    {submitButtonText}
+                  </>
                 )}
-                {loading ? 'Processing...' : submitButtonText}
               </button>
             </form>
-          </div>
-        </div>
 
-        {/* Global Feedback Area */} 
-        <div className="mt-8 space-y-4">
-          {error && !loadingStoredChapters && ( // Show global fetch error if loading finished and error exists
-            <GlobalFeedback type="error" message={error} />
-          )}
-          {processingMessage && (
-            <GlobalFeedback type="success" message={processingMessage} />
-          )}
+            {/* Feedback Messages */}
+            {processingMessage && <GlobalFeedback type="success" message={processingMessage} />}
+            {error && <GlobalFeedback type="error" message={error} />}
+          </div>
         </div>
       </main>
     </div>
   );
 }
 
-// --- Helper Components ---
-
-/**
- * A simple spinner component using Tailwind CSS for animation.
- * @param {{ size?: number }} props - Component props.
- * @param {number} [props.size=4] - The size of the spinner (maps to h-size and w-size Tailwind classes).
- * @returns {JSX.Element}
- */
 const Spinner = ({ size = 4 }: { size?: number }) => (
-  <div className={`animate-spin rounded-full border-2 border-current border-t-transparent h-${size} w-${size}`}></div>
+  <div
+    className={`animate-spin rounded-full h-${size} w-${size} border-2 border-current border-t-transparent`}
+  ></div>
 );
 
-/**
- * A skeleton loader component for the chapter list, showing a pulsing placeholder.
- * @returns {JSX.Element}
- */
 const ChapterListSkeleton = () => (
-  <div className="space-y-2.5 animate-pulse">
+  <div className="space-y-2 animate-pulse">
     {[...Array(5)].map((_, i) => (
-      <div key={i} className="flex justify-between items-center p-2.5 bg-[var(--bg-tertiary)]/50 rounded">
-        <div className="h-4 bg-[var(--bg-quaternary)] rounded w-1/4"></div>
-        <div className="h-4 bg-[var(--bg-quaternary)] rounded w-1/3"></div>
+      <div key={i} className="flex justify-between items-center py-2 px-3">
+        <div className="h-4 bg-gray-700 rounded w-12"></div>
+        <div className="h-4 bg-gray-700 rounded w-8"></div>
+        <div className="h-4 bg-gray-700 rounded w-20"></div>
       </div>
     ))}
   </div>
 );
 
-/**
- * A global feedback component to display success or error messages.
- * @param {{ type: 'error' | 'success'; message: string }} props - Component props.
- * @param {'error' | 'success'} props.type - The type of feedback, determining styling and icon.
- * @param {string} props.message - The message to display.
- * @returns {JSX.Element}
- */
-const GlobalFeedback = ({ type, message }: { type: 'error' | 'success', message: string }) => {
-  const baseClasses = "flex items-center gap-3 p-3 rounded-md text-sm";
-  const typeClasses = type === 'error' 
-    ? "bg-red-900/30 border border-red-700 text-red-300"
-    : "bg-green-900/30 border border-green-700 text-green-300";
-  const Icon = type === 'error' ? AlertTriangle : CheckCircle2;
-  
+const GlobalFeedback = ({ type, message }: { type: 'error' | 'success'; message: string }) => {
+  const bgColor =
+    type === 'success'
+      ? 'bg-green-900/30 border-green-700 text-green-300'
+      : 'bg-red-900/30 border-red-700 text-red-300';
+  const icon = type === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />;
+
   return (
-    <div className={`${baseClasses} ${typeClasses}`} aria-live="polite">
-      <Icon size={18} />
+    <div className={`flex items-center gap-2 p-3 mt-4 rounded border text-sm ${bgColor}`}>
+      {icon}
       <span>{message}</span>
     </div>
   );
-}; 
+};

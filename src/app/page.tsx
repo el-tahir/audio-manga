@@ -1,4 +1,4 @@
-"use client"
+'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -23,7 +23,7 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    document.title = "Detective Conan - Chapter Overview";
+    document.title = 'Detective Conan - Chapter Overview';
   }, []);
 
   useEffect(() => {
@@ -31,16 +31,38 @@ export default function HomePage() {
       setLoading(true);
       setError(null);
       try {
-        const apiUrl = `/api/chapters?sortBy=${sortBy}&order=${sortOrder}`;
+        // Ensure query parameters are in the correct format expected by the API
+        const params = new URLSearchParams({
+          sortBy: sortBy,
+          order: sortOrder.toLowerCase(), // API expects lowercase
+        });
+
+        const apiUrl = `/api/chapters?${params.toString()}`;
+        console.log('[HomePage] Fetching chapters with URL:', apiUrl);
+        console.log('[HomePage] Query params:', { sortBy, order: sortOrder.toLowerCase() });
+
         const res = await fetch(apiUrl);
+
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
+          console.error('[HomePage] API Error Response:', {
+            status: res.status,
+            statusText: res.statusText,
+            errorData,
+          });
           throw new Error(errorData.error || `Failed to fetch chapters (Status: ${res.status})`);
         }
-        const data: Chapter[] = await res.json();
-        setChapters(data);
+
+        const responseData = await res.json();
+        console.log('[HomePage] API Response:', responseData);
+
+        // The API returns { chapters: Chapter[], pagination: {...} }
+        // Extract the chapters array from the response
+        const chapters: Chapter[] = responseData.chapters || responseData;
+
+        setChapters(chapters);
       } catch (err) {
-        console.error('Error fetching chapters:', err);
+        console.error('[HomePage] Error fetching chapters:', err);
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
         setChapters([]);
       } finally {
@@ -52,48 +74,59 @@ export default function HomePage() {
   }, [sortBy, sortOrder]);
 
   const filteredChapters = chapters
-    ? chapters.filter(chapter => 
-        chapter.chapter_number.toString().includes(searchQuery.trim())
-      )
+    ? chapters.filter(chapter => chapter.chapter_number.toString().includes(searchQuery.trim()))
     : [];
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--foreground)]">
+    <div className="min-h-screen bg-bg-primary text-foreground">
       <Navbar />
       <main className="container mx-auto p-4 md:p-6 lg:p-8 max-w-6xl">
-        <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">Detective Conan OST Manga Reader</h1>
+        <h1 className="text-3xl md:text-4xl font-bold mb-2 text-center text-white">
+          Detective Conan OST Manga Reader
+        </h1>
 
-        <div className="max-w-3xl mx-auto mb-10 p-4 bg-[var(--bg-secondary)]/50 border border-[var(--border-color)] rounded-lg shadow">
+        <div className="max-w-3xl mx-auto mb-10 p-4 bg-bg-secondary/50 border border-border-default rounded-lg shadow">
           <p className="text-center text-gray-300 text-sm md:text-base leading-relaxed">
-            One of the coolest things about the Detective Conan anime is the OST. Let's bring that to the manga! This project is a manga reader for <strong className="text-white">Detective Conan</strong> that automatically plays an appropriate OST track based on the page currently being read. You can add new chapters in the <Link href="/manga-classifier"><span className="text-blue-400 hover:text-blue-300 underline cursor-pointer">Add New Chapter</span></Link> page. The initial classifiation will not always be correct, but you can edit the mood of each page in the View Moods page of the chapter. 
+            One of the coolest things about the Detective Conan anime is the OST. Let&apos;s bring
+            that to the manga! This project is a manga reader for{' '}
+            <strong className="text-white">Detective Conan</strong> that automatically plays an
+            appropriate OST track based on the page currently being read. You can add new chapters
+            in the{' '}
+            <Link href="/manga-classifier">
+              <span className="text-blue-400 hover:text-blue-300 underline cursor-pointer">
+                Add New Chapter
+              </span>
+            </Link>{' '}
+            page. The initial classifiation will not always be correct, but you can edit the mood of
+            each page in the View Moods page of the chapter.
           </p>
         </div>
-        
+
         {!loading && chapters && (
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
             <input
               type="text"
               placeholder="Search Chapter..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-4 py-2 text-base text-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-full md:w-64"
+              onChange={e => setSearchQuery(e.target.value)}
+              className="bg-bg-secondary border border-border-default rounded-md px-4 py-2 text-base text-white focus:outline-none focus:ring-1 focus:ring-blue-500 w-full md:w-64"
             />
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-400 flex items-center gap-1 shrink-0">
                 <ArrowDownUp size={16} /> Sort by:
               </span>
-              <select 
+              <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                className="bg-bg-secondary border border-border-default rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="chapter_number">Chapter Number</option>
                 <option value="processed_at">Date Processed</option>
               </select>
-              <select 
+              <select
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
-                className="bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
+                className="bg-bg-secondary border border-border-default rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
@@ -101,11 +134,9 @@ export default function HomePage() {
             </div>
           </div>
         )}
-        
-        {loading && (
-          <ChapterGridSkeleton />
-        )}
-        
+
+        {loading && <ChapterGridSkeleton />}
+
         {error && !loading && (
           <div className="flex items-center justify-center gap-3 p-4 rounded-md text-sm bg-red-900/30 border border-red-700 text-red-300 mb-6">
             <AlertTriangle size={20} />
@@ -114,10 +145,11 @@ export default function HomePage() {
         )}
 
         {!loading && !error && chapters && chapters.length === 0 && (
-          <div className="text-center py-12 px-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-md">
+          <div className="text-center py-12 px-6 rounded-lg bg-bg-secondary border border-border-default shadow-md">
             <h2 className="text-xl font-semibold text-gray-300 mb-3">No Chapters Found</h2>
             <p className="text-gray-400 mb-6">
-              It looks like no chapters have been processed yet. Head over to the classifier to get started!
+              It looks like no chapters have been processed yet. Head over to the classifier to get
+              started!
             </p>
             <Link href="/manga-classifier">
               <span className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-md shadow-sm transition-colors duration-150 cursor-pointer">
@@ -128,10 +160,10 @@ export default function HomePage() {
         )}
 
         {!loading && !error && filteredChapters.length === 0 && chapters && chapters.length > 0 && (
-          <div className="text-center py-12 px-6 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] shadow-md">
+          <div className="text-center py-12 px-6 rounded-lg bg-bg-secondary border border-border-default shadow-md">
             <h2 className="text-xl font-semibold text-gray-300 mb-3">No Matches Found</h2>
             <p className="text-gray-400 mb-6">
-              No chapters match your search query "{searchQuery}".
+              No chapters match your search query &quot;{searchQuery}&quot;.
             </p>
           </div>
         )}
@@ -139,7 +171,7 @@ export default function HomePage() {
         {!loading && !error && filteredChapters.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
             {filteredChapters.map((chapter: Chapter) => (
-              <ChapterCard 
+              <ChapterCard
                 key={chapter.chapter_number}
                 chapterNumber={chapter.chapter_number}
                 totalPages={chapter.total_pages}
@@ -157,14 +189,14 @@ export default function HomePage() {
 const ChapterGridSkeleton = () => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 animate-pulse">
     {[...Array(8)].map((_, i) => (
-      <div key={i} className="bg-[var(--bg-secondary)] rounded-lg h-48 p-4 border border-[var(--border-color)]">
-        <div className="h-5 bg-[var(--bg-tertiary)] rounded w-3/4 mb-3"></div>
-        <div className="h-4 bg-[var(--bg-tertiary)] rounded w-1/2 mb-2"></div>
-        <div className="h-4 bg-[var(--bg-tertiary)] rounded w-1/2 mb-2"></div>
-        <div className="h-4 bg-[var(--bg-tertiary)] rounded w-1/3 mb-4"></div>
-        <div className="flex justify-between mt-auto pt-3 border-t border-[var(--border-color)]">
-          <div className="h-8 bg-[var(--bg-tertiary)] rounded w-1/2"></div>
-          <div className="h-8 bg-[var(--bg-tertiary)] rounded w-1/2"></div>
+      <div key={i} className="bg-bg-secondary rounded-lg h-48 p-4 border border-border-default">
+        <div className="h-5 bg-bg-tertiary rounded w-3/4 mb-3"></div>
+        <div className="h-4 bg-bg-tertiary rounded w-1/2 mb-2"></div>
+        <div className="h-4 bg-bg-tertiary rounded w-1/2 mb-2"></div>
+        <div className="h-4 bg-bg-tertiary rounded w-1/3 mb-4"></div>
+        <div className="flex justify-between mt-auto pt-3 border-t border-border-default">
+          <div className="h-8 bg-bg-tertiary rounded w-1/2"></div>
+          <div className="h-8 bg-bg-tertiary rounded w-1/2"></div>
         </div>
       </div>
     ))}

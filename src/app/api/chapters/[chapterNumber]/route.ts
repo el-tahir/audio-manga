@@ -9,10 +9,7 @@ export async function GET(
     const { chapterNumber: chapterNumberParam } = await params;
     const chapterNumber = Number(chapterNumberParam);
     if (isNaN(chapterNumber)) {
-      return NextResponse.json(
-        { error: 'Invalid chapterNumber' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid chapterNumber' }, { status: 400 });
     }
 
     const { data: chapter, error } = await supabase
@@ -23,18 +20,13 @@ export async function GET(
 
     if (error || !chapter) {
       console.error('[API /api/chapters/[chapterNumber] GET] Not found or DB error:', error);
-      return NextResponse.json(
-        { error: 'Chapter not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Chapter not found' }, { status: 404 });
     }
 
     return NextResponse.json(chapter, { status: 200 });
-  } catch (err: any) {
-    console.error('[API /api/chapters/[chapterNumber] GET] Internal server error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    console.error('[API /api/chapters/[chapterNumber] GET] Internal server error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
