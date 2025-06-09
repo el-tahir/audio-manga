@@ -14,11 +14,9 @@
   "dependencies": {
     "@google-cloud/storage": "^7.16.0",
     "@google-cloud/tasks": "^6.0.1",
-    "@google/genai": "^0.3.1",
     "@google/generative-ai": "^0.24.0",
     "@radix-ui/react-slot": "^1.2.0",
     "@supabase/supabase-js": "^2.49.1",
-    "@vercel/blob": "^0.27.3",
     "adm-zip": "^0.5.16",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -31,8 +29,6 @@
     "sharp": "^0.33.5",
     "tailwind-merge": "^3.2.0",
     "tsx": "^4.19.3",
-    "yt-search": "^2.12.1",
-    "ytdl-core": "^4.11.5",
     "zod": "^3.25.23"
   },
   "devDependencies": {

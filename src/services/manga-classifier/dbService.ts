@@ -1,12 +1,20 @@
 import { supabase } from '@/lib/supabase';
 import { ClassificationResult } from '@/types';
 
+interface ChapterRow {
+  id: number;
+  chapter_number: number;
+  total_pages: number;
+  processed_at: string;
+  status?: string;
+}
+
 /**
  * Retrieves a chapter's data from the database.
  * @param {number} chapterNumber - The chapter number to retrieve.
- * @returns {Promise<any | null>} A promise that resolves to the chapter data object, or null if not found or on error.
+ * @returns {Promise<ChapterRow | null>} A promise that resolves to the chapter data object, or null if not found or on error.
  */
-export async function getChapterFromDatabase(chapterNumber: number) {
+export async function getChapterFromDatabase(chapterNumber: number): Promise<ChapterRow | null> {
   const { data, error } = await supabase
     .from('manga_chapters')
     .select('*')
@@ -110,8 +118,8 @@ export async function storeClassificationsInDatabase(
         console.log('[MANGA-CLASSIFIER] Retrying without explanation field');
 
         const simplifiedBatch = batch.map(record => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { explanation, ...rest } = record;
+          // Remove explanation field for fallback insert when schema doesn't support it
+          const { explanation: _explanation, ...rest } = record;
           return rest;
         });
 

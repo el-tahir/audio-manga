@@ -1,8 +1,8 @@
 // start-server.js
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const fs = require('fs'); // Required for path resolution if server.js is not in current dir
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const path = require('path'); // Required for path resolution
+// Note: CommonJS require is necessary for this production server bootstrap file
+// as it needs to run before the Next.js build system is available
+const fs = require('fs'); // Required for server.js existence check
+const path = require('path'); // Required for resolving server.js path
 
 // Removed dotenv logic as individual secrets will be injected directly.
 
@@ -16,7 +16,7 @@ const serverPath = path.resolve(__dirname, 'server.js');
 
 if (fs.existsSync(serverPath)) {
   console.log(`Starting Next.js server from: ${serverPath}`);
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // Dynamic require is needed here to load the generated Next.js server
   require(serverPath);
 } else {
   console.error(

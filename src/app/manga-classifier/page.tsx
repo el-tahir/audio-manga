@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import {
   CheckCircle2,
@@ -10,201 +10,50 @@ import {
   RotateCw,
   DownloadCloud,
 } from 'lucide-react';
-import { Chapter, InputChapterStateType } from '@/types';
-import { POLLING_INTERVAL } from '@/config/constants';
-// Removed unused imports
-// import {
-//   chapterExistsInDatabase,
-//   getChapterClassifications
-// } from '@/services/mangaService';
-// import { ClassificationResult } from '@/types';
+import { Chapter } from '@/types';
+import { useChapterPolling } from '@/hooks/useChapterPolling';
+import { useChapterInput } from '@/hooks/useChapterInput';
+import { useChapterDownload } from '@/hooks/useChapterDownload';
 
 export default function MangaClassifier() {
-  const [chapterNumberInput, setChapterNumberInput] = useState<string>('');
-  const [loading, setLoading] = useState(false); // For API call button state
-  const [error, setError] = useState<string | null>(null);
-  const [storedChapters, setStoredChapters] = useState<Chapter[]>([]);
-  const [loadingStoredChapters, setLoadingStoredChapters] = useState(true);
-  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
-
-  // State derived from inputChapterState
-  const [inputStatus, setInputStatus] = useState<{
-    message: string;
-    type: 'info' | 'warning' | 'error' | 'success' | 'none';
-  }>({ message: '', type: 'none' });
-  const [isSubmitDisabled, setIsSubmitDisabled] = useState<boolean>(true); // Default to true when input is idle
-  const [submitButtonText, setSubmitButtonText] = useState<string>('Enter Chapter Number');
-
-  // New state to manage overall input/chapter condition
-  const [inputChapterState, setInputChapterState] = useState<InputChapterStateType>('idle');
-
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Custom hooks for functionality
+  const { storedChapters, loadingStoredChapters, error: chaptersError, refreshChapters } = useChapterPolling();
+  
+  const {
+    chapterNumberInput,
+    inputStatus,
+    isSubmitDisabled,
+    submitButtonText,
+    handleInputChange,
+    clearInput,
+  } = useChapterInput(storedChapters);
+  
+  const { 
+    loading, 
+    error, 
+    processingMessage, 
+    triggerDownload, 
+    clearMessages 
+  } = useChapterDownload(() => {
+    refreshChapters();
+    clearInput();
+  });
 
   // --- Set Page Title ---
   useEffect(() => {
     document.title = 'Manga Classifier - Detective Conan';
   }, []);
 
-  // --- Data Fetching & Polling ---
-  const fetchChapters = async (isInitialLoad = false) => {
-    if (isInitialLoad) {
-      setLoadingStoredChapters(true);
-    }
-    try {
-      const res = await fetch('/api/chapters');
-      if (!res.ok) throw new Error('Failed to fetch chapters');
-      const responseData = await res.json();
-
-      // The API returns { chapters: Chapter[], pagination: {...} }
-      // Extract the chapters array from the response
-      const data: Chapter[] = responseData.chapters || responseData;
-
-      data.sort((a, b) => a.chapter_number - b.chapter_number);
-      setStoredChapters(data);
-    } catch (err) {
-      console.error('Error fetching chapters:', err);
-      setError('Could not load chapter list. Auto-refresh disabled.');
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    } finally {
-      if (isInitialLoad) {
-        setLoadingStoredChapters(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    fetchChapters(true);
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    pollingIntervalRef.current = setInterval(fetchChapters, POLLING_INTERVAL);
-    return () => {
-      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-    };
-  }, []);
-
-  // --- Input Handling & Validation ---
-  // Effect 1: Determine the inputChapterState based on input and stored data
-  useEffect(() => {
-    if (!chapterNumberInput) {
-      setInputChapterState('idle');
-      return;
-    }
-    const num = parseInt(chapterNumberInput, 10);
-    if (isNaN(num)) {
-      setInputChapterState('invalid');
-      return;
-    }
-    const existingChapter = storedChapters.find(c => c.chapter_number === num);
-    if (existingChapter) {
-      if (existingChapter.status === 'completed') {
-        setInputChapterState('completed');
-      } else if (existingChapter.status === 'failed') {
-        setInputChapterState('failed_retryable');
-      } else {
-        // Includes processing, pending, etc.
-        setInputChapterState('processing');
-      }
-    } else {
-      setInputChapterState('ready_new'); // Ready to download a new chapter
-    }
-  }, [chapterNumberInput, storedChapters]);
-
-  // Effect 2: Set UI states based on inputChapterState
-  useEffect(() => {
-    const num = chapterNumberInput;
-    switch (inputChapterState) {
-      case 'idle':
-        setInputStatus({ message: '', type: 'none' });
-        setIsSubmitDisabled(true);
-        setSubmitButtonText('Enter Chapter Number');
-        break;
-      case 'invalid':
-        setInputStatus({ message: 'Please enter a valid number.', type: 'error' });
-        setIsSubmitDisabled(true);
-        setSubmitButtonText('Invalid Input');
-        break;
-      case 'completed':
-        setInputStatus({ message: `Chapter ${num} is already processed.`, type: 'success' });
-        setIsSubmitDisabled(true);
-        setSubmitButtonText('Already Processed');
-        break;
-      case 'failed_retryable':
-        setInputStatus({
-          message: `Chapter ${num} failed previously. Ready to retry.`,
-          type: 'warning',
-        });
-        setIsSubmitDisabled(false);
-        setSubmitButtonText('Retry Chapter');
-        break;
-      case 'processing':
-        const existing = storedChapters.find(c => c.chapter_number === parseInt(num, 10));
-        setInputStatus({
-          message: `Chapter ${num} is currently processing (Status: ${existing?.status || '...'}).`,
-          type: 'info',
-        });
-        setIsSubmitDisabled(true);
-        setSubmitButtonText('Processing...');
-        break;
-      case 'ready_new':
-      default:
-        setInputStatus({ message: '', type: 'none' }); // Ready to download
-        setIsSubmitDisabled(false);
-        setSubmitButtonText('Download & Classify');
-        break;
-    }
-  }, [inputChapterState, chapterNumberInput, storedChapters]); // Include dependencies used inside switch
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setChapterNumberInput(e.target.value);
-    setError(null);
-    setProcessingMessage(null);
-  };
-
-  // --- API Call Logic ---
-  const triggerDownload = async (chapterNumStr: string) => {
-    setLoading(true);
-    setError(null);
-    setProcessingMessage(null);
-    try {
-      const res = await fetch(`/api/download-chapter/${chapterNumStr}`, { method: 'POST' });
-      const data = await res.json();
-      if (res.status === 202) {
-        setProcessingMessage(data.message || `Processing started for chapter ${chapterNumStr}`);
-        await fetchChapters(); // Refresh list immediately
-        setChapterNumberInput(''); // Clear input on success
-      } else if (res.status === 409) {
-        setError(data.message || `Chapter ${chapterNumStr} already exists or is processing.`);
-      } else {
-        throw new Error(data.error || `Failed to initiate download for chapter ${chapterNumStr}`);
-      }
-    } catch (err) {
-      console.error('Error initiating download:', err);
-
-      // Provide more helpful error messages for common issues
-      let errorMessage = err instanceof Error ? err.message : 'Failed to initiate download';
-
-      if (
-        errorMessage.includes('500 Internal Server Error') ||
-        errorMessage.includes('Cubari API is currently experiencing issues')
-      ) {
-        errorMessage = `⚠️ Manga source (Cubari) is temporarily unavailable. This is a known issue with their servers. Please try again in a few minutes.`;
-      } else if (errorMessage.includes('Failed to fetch series data')) {
-        errorMessage = `📡 Unable to connect to manga source. Please check your internet connection and try again.`;
-      } else if (errorMessage.includes('Chapter') && errorMessage.includes('not found')) {
-        errorMessage = `📚 Chapter ${chapterNumStr} was not found in the source. Please verify the chapter number is correct.`;
-      }
-
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chapterNumberInput || isSubmitDisabled || loading) return;
+    clearMessages();
     triggerDownload(chapterNumberInput);
+  };
+
+  const handleInputChangeWrapper = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleInputChange(e);
+    clearMessages();
   };
 
   // --- UI Rendering Functions ---
@@ -275,10 +124,10 @@ export default function MangaClassifier() {
             </h2>
             {loadingStoredChapters ? (
               <ChapterListSkeleton />
-            ) : error && storedChapters.length === 0 ? (
+            ) : chaptersError && storedChapters.length === 0 ? (
               // Show error prominently if list fetching fails and no chapters are loaded
               <div className="flex items-center gap-2 p-4 bg-red-900/30 border border-red-700 rounded text-red-300">
-                <AlertTriangle size={20} /> {error}
+                <AlertTriangle size={20} /> {chaptersError}
               </div>
             ) : (
               <div className="max-h-96 overflow-y-auto pr-2">
@@ -338,7 +187,7 @@ export default function MangaClassifier() {
                   type="number"
                   id="chapterNumber"
                   value={chapterNumberInput}
-                  onChange={handleInputChange}
+                  onChange={handleInputChangeWrapper}
                   placeholder="e.g., 1120"
                   className="w-full px-3 py-2 bg-bg-tertiary text-foreground rounded border border-border-default focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={loading}
