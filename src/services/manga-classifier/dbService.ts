@@ -119,6 +119,7 @@ export async function storeClassificationsInDatabase(
 
         const simplifiedBatch = batch.map(record => {
           // Remove explanation field for fallback insert when schema doesn't support it
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const { explanation: _explanation, ...rest } = record;
           return rest;
         });

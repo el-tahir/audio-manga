@@ -30,9 +30,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false, // Ensure TypeScript errors fail the build
   },
   
-  // Performance optimizations
-  swcMinify: true,
-  
   // Headers for security and performance
   async headers() {
     return [
